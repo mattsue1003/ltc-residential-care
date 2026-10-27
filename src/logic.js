@@ -119,9 +119,14 @@ function buildReminders() {
     const due = last ? addDays(last.date, t.every) : T;
     if (diffDays(T, due) <= 14) push({ rid: null, cat: '機構', ref: t.ref, title: `${t.kind}${last ? `（上次 ${roc(last.date)}）` : '：尚無紀錄'}`, due, level: status(due), act: `meeting:${t.kind}` });
   });
+  // 每月指標統計表（下個月 5 日前確認）
+  { const d = new Date(T + 'T00:00:00'); d.setDate(0); const pm = ymd(d).slice(0, 7); const md = (DB.settings.qiMonthDone || {})[pm];
+    if (!md && DB.residents.length) { const due = `${T.slice(0, 7)}-05`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+pm.slice(0, 4) - 1911} 年 ${+pm.slice(5)} 月指標監測月統計表待確認`, due, level: status(due), act: 'go:qimonth' }); } }
+  // 年度分析（隔年 1 月底前）
+  { const py = String(+T.slice(0, 4) - 1), Y = (DB.quarterly['Y' + py] || {}).pdca || {}; if (DB.residents.length && +T.slice(5, 7) <= 3 && Object.keys(Y).length < 7) { const due = `${T.slice(0, 4)}-01-31`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+py - 1911} 年度指標分析報告尚未完成`, due, level: status(due), act: 'go:qiyear' }); } }
   // 季分析
   const pq = prevQuarter(quarterOf(T));
-  if (!(DB.quarterly[pq] && DB.quarterly[pq].done)) push({ rid: null, cat: '機構', ref: 'B12–B18', title: `${pq.replace('-Q', ' 年第 ')} 季品質指標分析檢討尚未完成`, due: addDays(quarterRange(quarterOf(T))[0], 30), level: status(addDays(quarterRange(quarterOf(T))[0], 30)), act: `quality:${pq}` });
+  if (!(DB.quarterly[pq] && DB.quarterly[pq].done)) push({ rid: null, cat: '機構', ref: 'B12–B18', title: `${pq.replace('-Q', ' 年第 ')} 季 PDCA 改善報告單尚未完成`, due: addDays(quarterRange(quarterOf(T))[0], 4), level: status(addDays(quarterRange(quarterOf(T))[0], 4)), act: 'go:qipdca' });
   const order = { bad: 0, warn: 1, info: 2 };
   return list.sort((a, b) => order[a.level] - order[b.level] || a.due.localeCompare(b.due));
 }

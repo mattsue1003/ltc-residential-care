@@ -95,6 +95,7 @@ function doAct(a) {
   else if (k === 'vaccine') openVaccine(null, x);
   else if (k === 'meeting') openMeeting(null, x);
   else if (k === 'quality') go(`quality/${x}`);
+  else if (k === 'go') go(x);
 }
 
 /* ===== 住民名冊 ===== */

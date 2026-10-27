@@ -203,3 +203,5 @@ footer.cr{color:var(--muted);font-size:12px;margin-top:30px;text-align:center}
 .pg .note{font-size:9.5pt;color:#333}
 .pg .ck::before{content:"☐ "}.pg .ck.y::before{content:"☑ "}
 @page{size:A4;margin:14mm 12mm}
+@page land{size:A4 landscape;margin:10mm 12mm}
+.pg.land{page:land}

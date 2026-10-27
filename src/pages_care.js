@@ -173,12 +173,13 @@ function eventTable(list, showRes) {
 }
 ACT.evType = el => { evType = el.dataset.t; refresh(); };
 function openEvent(id, rid, type) {
-  const e = id ? DB.events.find(x => x.id === id) : { id: uid(), _new: true, rid, type: type || '跌倒', date: today(), time: new Date().toTimeString().slice(0, 5), status: '追蹤中' };
+  const e = eventDefaults(id ? DB.events.find(x => x.id === id) : { id: uid(), _new: true, rid, type: type || '跌倒', date: today(), time: new Date().toTimeString().slice(0, 5), status: '追蹤中' });
   const draw = (t = e.type) => {
     const def = EVENT_TYPES[t] || { fields: [] };
     const base = [
       { key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === e.rid).map(r => [r.id, resLabel(r)]), req: true },
       { key: 'date', label: '發生日期', type: 'date', req: true }, { key: 'time', label: '時間', type: 'time' },
+      ...EVENT_COMMON_TOP.map(k => Object.assign({ key: k }, EVENT_FIELD_DEF[k], ['tubesAt', 'dxs'].includes(k) ? { wide: true } : {})),
       ...def.fields.map(k => Object.assign({ key: k }, EVENT_FIELD_DEF[k])),
       { key: 'desc', label: '事件經過（人、時、地、事、物）', type: 'textarea', wide: true, req: true },
       { key: 'immediate', label: '立即處置', type: 'textarea', wide: true },
@@ -186,22 +187,25 @@ function openEvent(id, rid, type) {
       ...(t === '跌倒' ? [{ key: 'factors', label: '跌倒危險因子分析', type: 'checks', options: FALL_FACTORS, wide: true }] : []),
       { key: 'cause', label: '原因分析（逐案分析）', type: 'textarea', wide: true },
       { key: 'action', label: '處置與追蹤', type: 'textarea', wide: true },
-      { key: 'improve', label: '改善方案（預防再發）', type: 'textarea', wide: true },
+      { key: 'improve', label: '改善策略（預防再發）', type: 'textarea', wide: true },
+      { key: 'qaSign', label: '品管負責人' }, { key: 'mgrSign', label: '單位主管' },
       { key: 'status', label: '狀態', type: 'select', options: ['追蹤中','結案'], blank: false },
     ];
     return base;
   };
-  const render = () => `<label class="f req"><span>事件類別</span><select id="evTypeSel">${[...Object.keys(EVENT_TYPES), '管路移除'].map(t => `<option${t === e.type ? ' selected' : ''}>${t}</option>`).join('')}</select></label>${formHTML(draw(), e)}${eventPhraseHTML(e.type)}<div class="f"><span class="small muted">照片（傷口、現場；壓傷建議每次換藥拍照並放量尺）</span>${photoStrip('event:' + e.id)}</div><p class="small muted">原因分析與處置填寫完整，才會計為「已逐案分析」。</p>`;
+  const render = () => `<label class="f req"><span>事件類別</span><select id="evTypeSel">${[...Object.keys(EVENT_TYPES), '管路移除'].map(t => `<option${t === e.type ? ' selected' : ''}>${t}</option>`).join('')}</select></label>${formHTML(draw(), e)}${followupHTML(e)}${eventPhraseHTML(e.type)}<div class="f"><span class="small muted">照片（傷口、現場；壓傷建議每次換藥拍照並放量尺）</span>${photoStrip('event:' + e.id)}</div><p class="small muted">原因分析與處置填寫完整，才會計為「已逐案分析」。</p>`;
   openModal(e._new ? '登錄異常事件' : `${e.type}事件`, render(), () => {
     const F = draw($('#evTypeSel').value); const o = readForm(F); if (!o) return false; o.type = $('#evTypeSel').value;
     if (o.status === '結案' && !(o.cause && o.action)) { toast('結案前請完成原因分析與處置', 'bad'); return false; }
+    o.followups = readFollowups(); if (!o.shift) o.shift = shiftOf(o.time);
+    if (o.type === '非計畫性住院' && o.returnDate) { const r0 = resById(o.rid); if (r0 && r0.status === '住院中' && o.returnDate <= today()) { r0.status = '在住'; save('residents', r0); } }
     save('events', Object.assign(e, o));
     if (o.type === '管路移除') { const r = resById(o.rid); if (r && r.tubes) { if (/鼻胃/.test(o.desc)) r.tubes.ng = false; if (/導尿/.test(o.desc)) r.tubes.foley = false; save('residents', r); } }
     toast('事件已儲存' + (o.type === '跌倒' ? '，記得重新評估跌倒風險' : ''));
   }, { extraBtn: !e._new ? `<button class="btn danger" data-act="delEvent" data-id="${e.id}">刪除</button>` : '' });
   const bindEv = () => $('#evTypeSel').addEventListener('change', () => {
     const nt = $('#evTypeSel').value;
-    const cur = readForm(draw(e.type), $('#mbody'), true);
+    const cur = readForm(draw(e.type), $('#mbody'), true); cur.followups = readFollowups();
     Object.assign(e, cur, { type: nt }); $('#mbody').innerHTML = render(); bindEv(); hydratePhotos($('#mbody'));
   });
   bindEv(); hydratePhotos($('#mbody'));

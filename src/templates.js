@@ -206,7 +206,8 @@ ACT.evPhrase = el => { const ta = $(`#mbody textarea[name="${el.dataset.f}"]`); 
 
 /* ===== 匯出 Word／PDF：所有列印表單共用 ===== */
 function wordDoc(pages, title) {
-  const css = `@page WordSection1{size:21cm 29.7cm;margin:1.4cm 1.2cm} div.WordSection1{page:WordSection1}
+  const land = pages.some(p => p.startsWith('<!--land-->'));
+  const css = `@page WordSection1{${land ? 'size:29.7cm 21cm;mso-page-orientation:landscape' : 'size:21cm 29.7cm'};margin:1.2cm 1.2cm} div.WordSection1{page:WordSection1}
     body{font-family:"標楷體","DFKai-SB","BiauKai",serif;font-size:12pt} h1{text-align:center;font-size:17pt;margin:0 0 2pt} .org{text-align:center;font-size:12pt}
     table{border-collapse:collapse;width:100%;margin:4pt 0} td,th{border:1px solid #000;padding:3pt 5pt;vertical-align:top;font-size:11pt} th{background:#eee}
     .meta{font-size:11pt;margin:4pt 0} .note{font-size:9.5pt;color:#333} .box{border:1px solid #000;padding:4pt} .sign{margin-top:14pt}`;

@@ -8,7 +8,7 @@ function doPrint(pages) {
 ACT.outPrint = () => { closeModal(); realPrint(__outPages); };
 ACT.outWord = () => { closeModal(); downloadWord(__outPages); };
 function realPrint(pages) {
-  $('#printArea').innerHTML = pages.map(p => `<div class="pg">${p}</div>`).join('');
+  $('#printArea').innerHTML = pages.map(p => `<div class="pg${p.startsWith('<!--land-->') ? ' land' : ''}">${p}</div>`).join('');
   document.body.classList.add('printing');
   const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
   window.addEventListener('afterprint', done);

@@ -62,7 +62,7 @@ function renderNav() {
   const rem = buildReminders(); const bad = rem.filter(r => r.level === 'bad').length;
   window.__rem = rem;
   $('nav.side').innerHTML = NAV.map(([sec, items]) => `<div class="sec">${sec}</div>` + items.map(([k, l, ic]) =>
-    (k === 'accounts' && !(typeof Cloud !== 'undefined' && Cloud.on && Cloud.isAdmin())) ? '' : `<a href="#/${k}" class="${ROUTE.page === k || (k === 'res' && ROUTE.page === 'r') ? 'on' : ''}"><span class="ic">${ic}</span>${l}${k === 'dash' && bad ? `<span class="badge">${bad}</span>` : ''}</a>`).join('')).join('');
+    (k === 'accounts' && !(typeof Cloud !== 'undefined' && Cloud.on && Cloud.isAdmin())) ? '' : `<a href="#/${k}" class="${ROUTE.page === k || (k === 'res' && ROUTE.page === 'r') || (k === 'quality' && /^qi/.test(ROUTE.page)) ? 'on' : ''}"><span class="ic">${ic}</span>${l}${k === 'dash' && bad ? `<span class="badge">${bad}</span>` : ''}</a>`).join('')).join('');
 }
 function render() {
   parseHash(); renderNav();

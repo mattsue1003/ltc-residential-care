@@ -9,7 +9,7 @@ ROUTES.quality = (q) => {
   const hist = recentQuarters(4).reverse().map(x => [x, qualityStats(...quarterRange(x))]);
   const Q = DB.quarterly[q] || { analysis: {} };
   const fmt = (row, a, b) => { const inner = row.rate === null ? row.n : `${row.n}<div class="small muted">${row.rate.toFixed(2)} ${row.unit}</div>`; return row.n ? `<button class="qcell" data-act="qDrill" data-k="${esc(row.key)}" data-f="${a}" data-t="${b}" title="點開看是哪幾件">${inner}</button>` : inner; };
-  return `<div class="hd"><div><h1>品質指標</h1><p class="sub">由事件登錄、約束、體重、評估資料自動計算。人日數 = 每位住民在機構的天數加總。每季完成分析檢討即符合 B12–B18「定期（每季）分析」。</p></div><span class="sp"></span>
+  return `${qiTabs('quality')}<div class="hd"><div><h1>品質指標</h1><p class="sub">由事件登錄、約束、體重、評估資料自動計算。人日數 = 每位住民在機構的天數加總。每季完成分析檢討即符合 B12–B18「定期（每季）分析」。</p></div><span class="sp"></span>
     <select id="qSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${recentQuarters(8).map(x => `<option value="${x}"${x === q ? ' selected' : ''}>${x.replace('-Q', ' 年第 ')} 季${x === quarterOf(today()) ? '（本季）' : ''}</option>`).join('')}</select></div>
   <p class="small muted" style="margin-top:-6px">數字可以點開看是哪幾件；右邊趨勢長條點一下切換季度。</p>
   <div class="grid g4"><div class="kpi"><div class="n">${qs.rd}</div><div class="l">本季住民人日數</div></div><div class="kpi"><div class="n">${qs.census}</div><div class="l">平均每日在住</div></div>
@@ -18,7 +18,7 @@ ROUTES.quality = (q) => {
   ${qs.rows.map((row, i) => { const h = hist.map(([, s]) => s.rows[i].rate ?? s.rows[i].n); const mx = Math.max(...h, 0.0001);
     return `<tr><td>${esc(row.key)} ${refChip(row.ref)}</td>${ms.map((s, mi) => `<td>${fmt(s.rows[i], ...monthRange(months[mi]))}</td>`).join('')}<td><b>${fmt(row, f, t)}</b></td>
     <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${h.map((v, j) => `<button data-act="qGo" data-q="${hist[j][0]}" title="${hist[j][0]}：${typeof v === 'number' ? v.toFixed(2) : v}（點一下切換到這一季）" style="width:18px;padding:0;border:0;cursor:pointer;height:${Math.max(3, v / mx * 28)}px;background:${hist[j][0] === q ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></button>`).join('')}</div></td></tr>`; }).join('')}</table></div></div>
-  <h2>本季分析與改善方案</h2><p class="sub">逐項填寫後按「完成本季分析」。建議於品質會議中討論並記錄於「會議與活動」。</p>
+  <div class="banner info">每季的正式分析請到「<a href="#/qipdca">季 PDCA</a>」填寫 PDCA 改善報告單，每月報表在「<a href="#/qimonth">月統計表</a>」。</div><h2>本季分析與改善方案（簡式）</h2><p class="sub">逐項填寫後按「完成本季分析」。建議於品質會議中討論並記錄於「會議與活動」。</p>
   <div id="qForm">${qs.rows.filter(r => r.rate !== null || r.key.startsWith('管路成功')).map(row => { const a = (Q.analysis || {})[row.key] || {}; const evs = DB.events.filter(e => row.key.startsWith(e.type) && e.date >= f && e.date <= t);
     return `<div class="card"><div class="row"><b>${esc(row.key)}</b>${refChip(row.ref)}<span class="sp"></span><span class="chip">${row.n} 件</span></div>
     ${evs.length ? `<div class="small muted" style="margin:6px 0">${evs.map(e => `${roc(e.date)} ${esc(resById(e.rid) ? resById(e.rid).name : '')}：${esc((e.cause || '未分析').slice(0, 30))}`).join('；')}</div>` : ''}
