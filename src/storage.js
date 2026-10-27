@@ -205,6 +205,29 @@ async function buildCloudBackup(withPhotos) {
   return JSON.stringify({ __app: 'ltc-facility', __ver: 2, __at: nowISO(), org: DB.settings.org || '', enc: true, salt: b64(salt), data: enc });
 }
 
+/* --- 加密試用包：網站上只有加密檔，輸入密碼才解得開 --- */
+async function trialAvailable() { if (Cloud.on) return false; try { const r = await fetch('trial.enc.json', { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; } }
+function openTrialLoader(auto) {
+  openModal('載入試用資料', `<p class="small">這份是健復養護中心的<b>去識別化試用資料</b>（47 位住民、近一個月護理紀錄），已加密。請輸入密碼。</p>
+    <label class="f">試用密碼<input id="trialPw" autocomplete="off" placeholder="jf-xxxx-xxxx-xxxx"></label>
+    <p class="small muted">資料只會載入到這台裝置的這個瀏覽器。${DB.residents.length ? '<b style="color:var(--warn)">注意：會覆蓋這台裝置目前的資料。</b>' : ''}</p><p id="trialMsg" class="small" style="color:var(--bad)"></p>`, () => { loadTrial($('#trialPw').value.trim()); return false; }, { saveText: '解鎖並載入' });
+}
+async function loadTrial(pass) {
+  const msg = $('#trialMsg'); if (!pass) { msg.textContent = '請輸入密碼'; return; }
+  msg.style.color = 'var(--muted)'; msg.textContent = '解密中…';
+  try {
+    const f = await fetch('trial.enc.json', { cache: 'no-store' }).then(r => r.json());
+    const key = await Store.deriveKey(pass, unb64(f.salt)), keep = Store.key; let txt;
+    Store.key = key; try { txt = await Store.dec(f.data); } finally { Store.key = keep; }
+    const pkg = JSON.parse(txt), data = pkg.data || pkg, user = DB.settings.user;
+    COLLECTIONS.forEach(c => { DB[c] = data[c] || (['settings', 'quarterly', 'accred'].includes(c) ? {} : []); Store.mark(c); });
+    DB.settings.trial = true; if (user) DB.settings.user = user;
+    await Store.flush(); closeModal(); updateBrand(); toast(`已載入試用資料：${DB.residents.length} 位住民`);
+    if (!DB.settings.user) askUser(true); go('dash');
+  } catch (e) { msg.style.color = 'var(--bad)'; msg.textContent = '密碼錯誤，或無法讀取試用資料'; }
+}
+ACT.openTrial = () => openTrialLoader();
+
 /* --- 調閱紀錄（B2-4、D1） --- */
 function logAccess(action, rid) {
   if (Cloud.on) Cloud.audit(action, rid);

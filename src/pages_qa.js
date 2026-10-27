@@ -97,7 +97,7 @@ ROUTES.settings = () => {
     <label class="small row" style="gap:6px;margin-bottom:8px"><input type="checkbox" id="bkPhotos" checked> 備份檔包含照片（檔案會變大）</label>
     <div class="row"><button class="btn pri" data-act="exportData">匯出備份檔 (.json)</button><label class="btn">匯入還原<input type="file" id="importFile" accept=".json" hidden></label></div>
     <p class="small muted">備份檔含住民個資${Cloud.on ? '，下載時會要求另設一組備份密碼加密' : Store.key ? '，已用你的密碼加密' : '，<b>尚未加密</b>，建議先設定密碼'}。請存放在機構的電腦或隨身碟，不要用通訊軟體傳送。</p></div>
-  ${Cloud.on ? '' : `<div class="card"><h2 style="margin-top:0">試用與重置</h2><div class="row"><button class="btn" data-act="loadDemo">載入示範資料（12 位虛構住民）</button><button class="btn danger" data-act="clearAll">清除全部資料</button></div></div>`}
+  ${Cloud.on ? '' : `<div class="card"><h2 style="margin-top:0">試用與重置</h2><div class="row"><button class="btn" data-act="loadDemo">載入示範資料（12 位虛構住民）</button><button class="btn" data-act="openTrial">載入加密試用資料（需密碼）</button><button class="btn danger" data-act="clearAll">清除全部資料</button></div></div>`}
   <div class="card"><h2 style="margin-top:0">外觀</h2><div class="row" style="margin-bottom:8px"><span class="small muted">字級</span><button class="btn sm" data-act="zoom" data-z="1">標準</button><button class="btn sm" data-act="zoom" data-z="1.15">大</button><button class="btn sm" data-act="zoom" data-z="1.3">特大</button></div><div class="row"><span class="small muted">底色</span><button class="btn sm" data-act="theme" data-t="">白底（預設）</button><button class="btn sm" data-act="theme" data-t="dark">深色</button><button class="btn sm" data-act="theme" data-t="auto">跟隨電腦設定</button></div></div>
   </div></div>${Cloud.on ? cloudStorageCard() : storageCards()}`;
 };

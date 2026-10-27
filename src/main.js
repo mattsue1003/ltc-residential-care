@@ -49,7 +49,9 @@ async function boot() {
   window.addEventListener('hashchange', render);
   window.addEventListener('beforeunload', () => { if (Store.dirty.size) Store.flush(); });
   render();
-  if (!DB.settings.user) askUser(true);
+  const wantTrial = /[?&]trial\b/.test(location.search);
+  if (wantTrial && await trialAvailable()) { history.replaceState(null, '', location.pathname + location.hash); openTrialLoader(true); }
+  else if (!DB.settings.user) askUser(true);
   // 自動逾時鎖定（有密碼時，閒置 15 分鐘）
   let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
   ['click', 'keydown'].forEach(ev => document.addEventListener(ev, reset)); reset();

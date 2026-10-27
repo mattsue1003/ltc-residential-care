@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self'; form-action 'none'; base-uri 'none'">
 <title>長照照護紀錄系統</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23028090'/%3E%3Cpath d='M9 17l5 5 9-11' stroke='white' stroke-width='3.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <style>:root{
@@ -1212,6 +1212,7 @@ ROUTES.dash = () => {
   const backup = DB.settings.lastBackup;
   const u = DB.settings.user;
   return `
+  ${DB.settings.trial ? `<div class="banner info">這是<b>去識別化試用資料</b>，只存在這台裝置。可以放心新增、修改來模擬操作；要重來可到「設定與備份」重新載入。</div>` : ''}
   ${!DB.residents.length ? `<div class="banner info">目前沒有任何資料。可以到<a href="#/settings">設定與備份</a>載入示範資料先試用，或直接<a href="#/res">新增住民</a>。</div>` : ''}
   ${Folder.handle && !Folder.ok ? `<div class="banner warn">自動存檔資料夾「${esc(Folder.handle.name)}」需要重新授權才能繼續寫入。<button class="btn sm pri" data-act="folderRegrant">恢復自動存檔</button></div>` : ''}
   ${DB.residents.length && !Folder.ok && (!backup || diffDays(backup.slice(0, 10), T) > 7) ? `<div class="banner warn">已超過 7 天沒有備份，資料只存在這台電腦。建議到「設定與備份」連結自動存檔資料夾，或每週匯出一次。<button class="btn sm" data-act="exportData">立即備份</button></div>` : ''}
@@ -1917,7 +1918,7 @@ ROUTES.settings = () => {
     <label class="small row" style="gap:6px;margin-bottom:8px"><input type="checkbox" id="bkPhotos" checked> 備份檔包含照片（檔案會變大）</label>
     <div class="row"><button class="btn pri" data-act="exportData">匯出備份檔 (.json)</button><label class="btn">匯入還原<input type="file" id="importFile" accept=".json" hidden></label></div>
     <p class="small muted">備份檔含住民個資${Cloud.on ? '，下載時會要求另設一組備份密碼加密' : Store.key ? '，已用你的密碼加密' : '，<b>尚未加密</b>，建議先設定密碼'}。請存放在機構的電腦或隨身碟，不要用通訊軟體傳送。</p></div>
-  ${Cloud.on ? '' : `<div class="card"><h2 style="margin-top:0">試用與重置</h2><div class="row"><button class="btn" data-act="loadDemo">載入示範資料（12 位虛構住民）</button><button class="btn danger" data-act="clearAll">清除全部資料</button></div></div>`}
+  ${Cloud.on ? '' : `<div class="card"><h2 style="margin-top:0">試用與重置</h2><div class="row"><button class="btn" data-act="loadDemo">載入示範資料（12 位虛構住民）</button><button class="btn" data-act="openTrial">載入加密試用資料（需密碼）</button><button class="btn danger" data-act="clearAll">清除全部資料</button></div></div>`}
   <div class="card"><h2 style="margin-top:0">外觀</h2><div class="row" style="margin-bottom:8px"><span class="small muted">字級</span><button class="btn sm" data-act="zoom" data-z="1">標準</button><button class="btn sm" data-act="zoom" data-z="1.15">大</button><button class="btn sm" data-act="zoom" data-z="1.3">特大</button></div><div class="row"><span class="small muted">底色</span><button class="btn sm" data-act="theme" data-t="">白底（預設）</button><button class="btn sm" data-act="theme" data-t="dark">深色</button><button class="btn sm" data-act="theme" data-t="auto">跟隨電腦設定</button></div></div>
   </div></div>${Cloud.on ? cloudStorageCard() : storageCards()}`;
 };
@@ -2311,6 +2312,29 @@ async function buildCloudBackup(withPhotos) {
   Store.key = k; const enc = await Store.enc(JSON.stringify(data)); Store.key = keep;
   return JSON.stringify({ __app: 'ltc-facility', __ver: 2, __at: nowISO(), org: DB.settings.org || '', enc: true, salt: b64(salt), data: enc });
 }
+
+/* --- 加密試用包：網站上只有加密檔，輸入密碼才解得開 --- */
+async function trialAvailable() { if (Cloud.on) return false; try { const r = await fetch('trial.enc.json', { method: 'HEAD', cache: 'no-store' }); return r.ok; } catch (e) { return false; } }
+function openTrialLoader(auto) {
+  openModal('載入試用資料', `<p class="small">這份是健復養護中心的<b>去識別化試用資料</b>（47 位住民、近一個月護理紀錄），已加密。請輸入密碼。</p>
+    <label class="f">試用密碼<input id="trialPw" autocomplete="off" placeholder="jf-xxxx-xxxx-xxxx"></label>
+    <p class="small muted">資料只會載入到這台裝置的這個瀏覽器。${DB.residents.length ? '<b style="color:var(--warn)">注意：會覆蓋這台裝置目前的資料。</b>' : ''}</p><p id="trialMsg" class="small" style="color:var(--bad)"></p>`, () => { loadTrial($('#trialPw').value.trim()); return false; }, { saveText: '解鎖並載入' });
+}
+async function loadTrial(pass) {
+  const msg = $('#trialMsg'); if (!pass) { msg.textContent = '請輸入密碼'; return; }
+  msg.style.color = 'var(--muted)'; msg.textContent = '解密中…';
+  try {
+    const f = await fetch('trial.enc.json', { cache: 'no-store' }).then(r => r.json());
+    const key = await Store.deriveKey(pass, unb64(f.salt)), keep = Store.key; let txt;
+    Store.key = key; try { txt = await Store.dec(f.data); } finally { Store.key = keep; }
+    const pkg = JSON.parse(txt), data = pkg.data || pkg, user = DB.settings.user;
+    COLLECTIONS.forEach(c => { DB[c] = data[c] || (['settings', 'quarterly', 'accred'].includes(c) ? {} : []); Store.mark(c); });
+    DB.settings.trial = true; if (user) DB.settings.user = user;
+    await Store.flush(); closeModal(); updateBrand(); toast(`已載入試用資料：${DB.residents.length} 位住民`);
+    if (!DB.settings.user) askUser(true); go('dash');
+  } catch (e) { msg.style.color = 'var(--bad)'; msg.textContent = '密碼錯誤，或無法讀取試用資料'; }
+}
+ACT.openTrial = () => openTrialLoader();
 
 /* --- 調閱紀錄（B2-4、D1） --- */
 function logAccess(action, rid) {
@@ -3425,7 +3449,9 @@ async function boot() {
   window.addEventListener('hashchange', render);
   window.addEventListener('beforeunload', () => { if (Store.dirty.size) Store.flush(); });
   render();
-  if (!DB.settings.user) askUser(true);
+  const wantTrial = /[?&]trial\b/.test(location.search);
+  if (wantTrial && await trialAvailable()) { history.replaceState(null, '', location.pathname + location.hash); openTrialLoader(true); }
+  else if (!DB.settings.user) askUser(true);
   // 自動逾時鎖定（有密碼時，閒置 15 分鐘）
   let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
   ['click', 'keydown'].forEach(ev => document.addEventListener(ev, reset)); reset();
