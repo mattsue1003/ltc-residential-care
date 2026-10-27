@@ -20,7 +20,7 @@ html = f'''<!doctype html>
 <div id="app">
   <header class="top"><div class="brand"><div class="logo">✓</div><div><span id="orgName">長照住宿機構照護系統</span><small>評估・紀錄・提醒・評鑑</small></div></div>
     <div class="search"><input id="q" placeholder="搜尋住民姓名、床號、功能（按 / ）" aria-label="搜尋"><div class="drop" id="qdrop"></div></div>
-    <button class="userchip" id="userChip" data-act="switchUser">設定使用者</button></header>
+    <button class="userchip" id="userChip" data-act="switchUser">設定使用者</button><button class="userchip" id="logoutBtn" data-act="logout" hidden>登出</button></header>
   <nav class="side" aria-label="主選單"></nav>
   <main></main>
 </div>

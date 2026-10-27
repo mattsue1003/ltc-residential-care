@@ -214,17 +214,23 @@ footer.cr{color:var(--muted);font-size:12px;margin-top:30px;text-align:center}
 @page{size:A4;margin:14mm 12mm}
 @page land{size:A4 landscape;margin:10mm 12mm}
 .pg.land{page:land}
+
+.login-wrap{position:fixed;inset:0;z-index:200;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:16px}
+.login-card{width:100%;max-width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:28px 24px;box-shadow:0 10px 30px rgba(0,0,0,.08);text-align:center}
+.login-card h2{margin:4px 0 2px}.login-card label.f{text-align:left;margin-top:10px}
+.login-hint{margin:12px 0 4px;padding:10px 12px;border-radius:10px;background:var(--pri-soft);color:var(--ink);font-size:14px;text-align:left;line-height:1.6}
+header.top{gap:8px}
 </style></head>
 <body>
 <div id="app">
   <header class="top"><div class="brand"><div class="logo">✓</div><div><span id="orgName">長照住宿機構照護系統</span><small>評估・紀錄・提醒・評鑑</small></div></div>
     <div class="search"><input id="q" placeholder="搜尋住民姓名、床號、功能（按 / ）" aria-label="搜尋"><div class="drop" id="qdrop"></div></div>
-    <button class="userchip" id="userChip" data-act="switchUser">設定使用者</button></header>
+    <button class="userchip" id="userChip" data-act="switchUser">設定使用者</button><button class="userchip" id="logoutBtn" data-act="logout" hidden>登出</button></header>
   <nav class="side" aria-label="主選單"></nav>
   <main></main>
 </div>
 <div id="modal"></div><div id="toast" role="status" aria-live="polite"></div><div id="printArea"></div>
-<script>const APP_BUILD = '3f3d0f3533';
+<script>const APP_BUILD = 'f9e5bd4b42';
 /* ---- scales.js ---- */
 /* 評估量表定義：自動計分、判讀、敘述句、照顧計畫建議 */
 const SCALES = {
@@ -2454,6 +2460,36 @@ async function loadTrial(pass, f, silent) {
 }
 ACT.openTrial = () => openTrialLoader();
 
+/* --- 示範站登入／登出：每次登入都重新載入最新的示範資料 --- */
+const DEMO_ACCOUNT = 'demo';
+function demoLoggedIn() { try { return sessionStorage.getItem('demoIn') === '1'; } catch (e) { return false; } }
+function showDemoLogin() {
+  if ($('#demoLogin')) return;
+  document.body.insertAdjacentHTML('beforeend', `<div id="demoLogin" class="login-wrap"><form class="login-card" autocomplete="off">
+    <div class="logo" style="margin:0 auto 8px">✓</div><h2>長照照護紀錄系統</h2><p class="muted small">示範站（資料皆已去識別化）</p>
+    <label class="f">帳號<input id="dlUser" value="" placeholder="demo" autocapitalize="off"></label>
+    <label class="f">密碼<input id="dlPw" type="password" placeholder="EEEE"></label>
+    <div class="login-hint">示範帳號：<b>demo</b>　密碼：<b>EEEE</b>（4 個大寫 E）<br><span class="small">此為示範用帳號，登入後會載入最新的示範資料；正式上線後每位員工會有自己的帳號密碼。</span></div>
+    <p id="dlMsg" class="small" style="color:var(--bad);min-height:1em"></p>
+    <button class="btn pri" style="width:100%" id="dlBtn">登入</button></form></div>`);
+  const f = $('#demoLogin form'); setTimeout(() => $('#dlUser').focus(), 50);
+  f.addEventListener('submit', async e => {
+    e.preventDefault(); const u = $('#dlUser').value.trim().toLowerCase(), pw = $('#dlPw').value.trim(), msg = $('#dlMsg');
+    if (u !== DEMO_ACCOUNT) { msg.textContent = '帳號錯誤（示範帳號是 demo）'; return; }
+    msg.style.color = 'var(--muted)'; msg.textContent = '登入中，正在載入最新示範資料…'; $('#dlBtn').disabled = true;
+    if (!DB.settings.user) DB.settings.user = { name: '示範使用者', role: '機構主任' };
+    const ok = await loadTrial(pw, null, true);
+    if (!ok) { msg.style.color = 'var(--bad)'; msg.textContent = '密碼錯誤（示範密碼是 EEEE）'; $('#dlBtn').disabled = false; return; }
+    try { sessionStorage.setItem('demoIn', '1'); } catch (x) {}
+    $('#demoLogin').remove(); $('#logoutBtn').hidden = false; updateBrand(); go('dash'); render();
+  });
+}
+ACT.logout = async () => {
+  if (!confirm('確定要登出？下次登入會重新載入最新的示範資料（你在這台電腦做的修改不會保留）。')) return;
+  await Store.flush(); try { sessionStorage.removeItem('demoIn'); localStorage.removeItem('ltcTrialPw'); } catch (e) {}
+  location.hash = '#/dash'; location.reload();
+};
+
 /* --- 調閱紀錄（B2-4、D1） --- */
 function logAccess(action, rid) {
   if (Cloud.on) Cloud.audit(action, rid);
@@ -4028,8 +4064,11 @@ async function boot() {
   window.addEventListener('beforeunload', () => { if (Store.dirty.size) Store.flush(); });
   if (!location.hash || location.hash === '#/' || location.hash === '#/dash') { const role = myRole(); if (role === '照顧服務員') location.hash = '#/daily'; else if (role === '社工人員') location.hash = '#/notes'; }
   render();
-  const force = /[?&]trial\b/.test(location.search); if (force) history.replaceState(null, '', location.pathname + location.hash);
-  if (!(await trialCheckUpdate(force))) { if (DB.settings.trial && trialSimFill()) { await Store.flush(); render(); } if (!DB.settings.user) askUser(true); }
+  if (/[?&]trial\b/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
+  if (await trialAvailable()) { // 示範站：先登入，每次登入都載入最新示範資料
+    if (!demoLoggedIn()) showDemoLogin();
+    else { $('#logoutBtn').hidden = false; if (!(await trialCheckUpdate(false)) && trialSimFill()) { await Store.flush(); render(); } }
+  } else if (!DB.settings.user) askUser(true);
   // 自動逾時鎖定（有密碼時，閒置 15 分鐘）
   let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { if (modalDirty) { reset(); return; } await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
   ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, reset)); reset();
