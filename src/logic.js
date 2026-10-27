@@ -14,7 +14,8 @@ function latestAssess(rid) {
   return out;
 }
 function latestContact(rid, kind) { return DB.contacts.filter(c => c.rid === rid && c.kind === kind).sort((a, b) => b.date.localeCompare(a.date))[0]; }
-function latestPlan(rid) { return DB.plans.filter(p => p.rid === rid).sort((a, b) => b.date.localeCompare(a.date))[0]; }
+function planSort(a, b) { return b.date.localeCompare(a.date) || (b.created || '').localeCompare(a.created || ''); }
+function latestPlan(rid) { return DB.plans.filter(p => p.rid === rid).sort(planSort)[0]; }
 function weightsOf(rid) { return DB.weights.filter(w => w.rid === rid).sort((a, b) => a.date.localeCompare(b.date)); }
 function activeRestraint(rid) { return DB.restraints.find(x => x.rid === rid && !x.endDate); }
 function contactEvery(k) { return k === '醫師巡診' ? facType().doctor : (CONTACT_KINDS[k] || {}).every || 0; }
@@ -58,7 +59,7 @@ function buildReminders() {
       const due = addDays(fam || p.date, 183);
       if (!fam) push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: '照顧計畫尚未與家屬共同討論', due: addDays(p.date, 30), level: status(addDays(p.date, 30)), act: `plan:${r.id}` });
       else if (diffDays(T, due) <= 14) push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: `每半年與家屬共同修正照顧計畫（上次 ${roc(fam)}）`, due, level: status(due), act: `plan:${r.id}` });
-      const evalDue = (p.problems || []).map(x => x.evalDate).filter(Boolean).sort()[0];
+      const evalDue = (p.problems || []).filter(x => !/已達成|問題解除/.test(x.result || '')).map(x => x.evalDate).filter(Boolean).sort()[0];
       if (evalDue && diffDays(T, evalDue) <= 7) push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: '照顧問題到期評值', due: evalDue, level: status(evalDue), act: `plan:${r.id}` });
     }
     // 醫師、藥師、家屬、健檢
@@ -87,11 +88,12 @@ function buildReminders() {
       push({ rid: r.id, cat: '體重', ref: 'B18', title: `30 天內體重${wa.pct > 0 ? '增加' : '減少'} ${Math.abs(wa.pct).toFixed(1)}%，需收案分析`, due: wa.to.date, level: 'bad', act: `event:${r.id}:非計畫性體重改變` });
     // 每日照護
     const dToday = DB.daily.find(d => d.rid === r.id && d.date === T);
-    if (!dToday || dToday.temp === undefined || dToday.temp === '') push({ rid: r.id, cat: '每日', ref: 'B9', title: '今日體溫尚未記錄', due: T, level: 'info', act: 'daily' });
-    const y = addDays(T, -1), dY = DB.daily.find(d => d.rid === r.id && d.date === y);
+    const away = r.status === '住院中';
+    if (!away && (!dToday || dToday.temp === undefined || dToday.temp === '')) push({ rid: r.id, cat: '每日', ref: 'B9', title: '今日體溫尚未記錄', due: T, level: 'info', act: 'daily' });
+    const y = addDays(T, -1), dY = (r.admitDate < y && !away) ? (DB.daily.find(d => d.rid === r.id && d.date === y) || { oob: 0 }) : null;
     if (dY && r.mobility !== '臥床不宜移動' && (+dY.oob || 0) < (r.consciousness === '意識不清' ? 1 : 2))
       push({ rid: r.id, cat: '每日', ref: 'B24', title: `昨日下床 ${+dY.oob || 0} 次（應至少 ${r.consciousness === '意識不清' ? 1 : 2} 次）`, due: y, level: 'warn', act: 'daily' });
-    if (daysIn >= 7) {
+    if (daysIn >= 7 && !away) {
       const baths = DB.daily.filter(d => d.rid === r.id && d.bath && diffDays(d.date, T) < 7 && d.date <= T).length;
       const need = isSummer(T) ? 3 : 2;
       if (baths < need) push({ rid: r.id, cat: '每日', ref: 'B25', title: `近 7 天洗澡 ${baths} 次（${isSummer(T) ? '夏季' : ''}應至少 ${need} 次）`, due: T, level: 'warn', act: 'daily' });
@@ -123,7 +125,7 @@ function buildReminders() {
   { const d = new Date(T + 'T00:00:00'); d.setDate(0); const pm = ymd(d).slice(0, 7); const md = (DB.settings.qiMonthDone || {})[pm];
     if (!md && DB.residents.length) { const due = `${T.slice(0, 7)}-05`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+pm.slice(0, 4) - 1911} 年 ${+pm.slice(5)} 月指標監測月統計表待確認`, due, level: status(due), act: 'go:qimonth' }); } }
   // 年度分析（隔年 1 月底前）
-  { const py = String(+T.slice(0, 4) - 1), Y = (DB.quarterly['Y' + py] || {}).pdca || {}; if (DB.residents.length && +T.slice(5, 7) <= 3 && Object.keys(Y).length < 7) { const due = `${T.slice(0, 4)}-01-31`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+py - 1911} 年度指標分析報告尚未完成`, due, level: status(due), act: 'go:qiyear' }); } }
+  { const py = String(+T.slice(0, 4) - 1), Y = (DB.quarterly['Y' + py] || {}).pdca || {}; if (DB.residents.length && +T.slice(5, 7) <= 3 && !QI.every(i => Y[i.no] && Y[i.no].done)) { const due = `${T.slice(0, 4)}-01-31`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+py - 1911} 年度指標分析報告尚未完成`, due, level: status(due), act: 'go:qiyear' }); } }
   // 季分析
   const pq = prevQuarter(quarterOf(T));
   if (!(DB.quarterly[pq] && DB.quarterly[pq].done)) push({ rid: null, cat: '機構', ref: 'B12–B18', title: `${pq.replace('-Q', ' 年第 ')} 季 PDCA 改善報告單尚未完成`, due: addDays(quarterRange(quarterOf(T))[0], 4), level: status(addDays(quarterRange(quarterOf(T))[0], 4)), act: 'go:qipdca' });
@@ -200,8 +202,8 @@ function accredEvidence(code) {
   const a = it.auto;
   const meetLine = (k, days) => { const m = lastMeet(k); return m ? (within(m.date, days) ? ['ok', `最近一次 ${roc(m.date)}`] : ['bad', `上次 ${roc(m.date)}，已逾期`]) : ['bad', '系統內尚無紀錄']; };
   if (a === 'qmeet') return meetLine('服務品質會議', 92);
-  if (a === 'idt') { const m = lastMeet('跨專業個案討論'); if (!m) return ['bad', '尚無跨專業個案討論紀錄']; const disc = (m.participants || '').split(/[、,，\s]+/).filter(Boolean).length; return within(m.date, 92) ? [disc >= 3 ? 'ok' : 'warn', `最近 ${roc(m.date)}，參與 ${disc} 人／職類`] : ['bad', `上次 ${roc(m.date)}，已逾 3 個月`]; }
-  if (a === 'group') { const ms = [0, 1, 2].map(i => { const d = new Date(); d.setMonth(d.getMonth() - i); return ymd(d).slice(0, 7); }); const ok = ms.filter(m => DB.meetings.some(x => x.kind === '團體活動' && x.date.startsWith(m))).length; return [ok === 3 ? 'ok' : ok ? 'warn' : 'bad', `近 3 個月有辦理的月份 ${ok}/3`]; }
+  if (a === 'idt') { const m = lastMeet('跨專業個案討論'); if (!m) return ['bad', '尚無跨專業個案討論紀錄']; const disc = (m.disciplines || []).length || (m.participants || '').split(/[、,，\s]+/).filter(Boolean).length; return within(m.date, 92) ? [disc >= 3 ? 'ok' : 'warn', `最近 ${roc(m.date)}，參與 ${disc} 人／職類`] : ['bad', `上次 ${roc(m.date)}，已逾 3 個月`]; }
+  if (a === 'group') { const ms = [0, 1, 2].map(i => { const n = new Date(); return ymd(new Date(n.getFullYear(), n.getMonth() - i, 1)).slice(0, 7); }); const ok = ms.filter(m => DB.meetings.some(x => x.kind === '團體活動' && x.date.startsWith(m))).length; return [ok === 3 ? 'ok' : ok ? 'warn' : 'bad', `近 3 個月有辦理的月份 ${ok}/3`]; }
   if (a === 'b2') {
     let ok72 = 0, okQ = 0, okPlan = 0, okFam = 0;
     res.forEach(r => { const la = latestAssess(r.id);
@@ -233,19 +235,19 @@ function accredEvidence(code) {
   if (a === 'tube') { const ng = res.filter(r => r.tubes && r.tubes.ng).length, fo = res.filter(r => r.tubes && r.tubes.foley).length; const tr = res.filter(r => r.tubes && (r.tubes.ng || r.tubes.foley)).filter(r => DB.contacts.some(c => c.rid === r.id && (c.kind === '吞嚥／管路移除訓練' || c.kind === '膀胱訓練'))).length; return [tr ? 'ok' : 'warn', `鼻胃管 ${ng} 人、導尿管 ${fo} 人｜有移除訓練紀錄 ${tr} 人`]; }
   if (a === 'check') { const n = res.filter(r => DB.contacts.some(c => c.rid === r.id && c.kind === '年度健康檢查' && within(c.date, 365))).length; return [pct(n) >= 95 ? 'ok' : 'warn', `一年內完成健康檢查 ${pct(n)}%`]; }
   if (a === 'invasive') return meetLine('侵入性技術稽核', 183);
-  if (a === 'vaccine') { const season = +T.slice(5, 7) >= 9 ? T.slice(0, 4) : String(+T.slice(0, 4) - 1); const flu = res.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && !v.refused && v.date >= season + '-09-01')).length;
+  if (a === 'vaccine') { const season = +T.slice(5, 7) >= 10 ? T.slice(0, 4) : String(+T.slice(0, 4) - 1); const flu = res.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && !v.refused && v.date >= season + '-09-01')).length;
     const old = res.filter(r => age(r.birth) >= 65); const pn = old.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === '肺鏈 PCV' && !v.refused) && DB.vaccines.some(v => v.rid === r.id && v.kind === '肺鏈 PPV23' && !v.refused)).length;
     const cv = res.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === 'COVID-19' && !v.refused && within(v.date, 365))).length;
     const st = DB.settings.staff || {}; const sf = st.total ? Math.round((st.flu || 0) / st.total * 100) : null;
     const fp = pct(flu), pp = old.length ? Math.round(pn / old.length * 100) : 0, cp = pct(cv);
     return [fp >= 80 && pp >= 40 && cp >= 40 && (sf === null || sf >= 80) ? 'ok' : 'warn', `住民流感 ${fp}%（≥80）｜肺鏈兩劑 ${pp}%（≥40）｜COVID-19 ${cp}%（≥40）｜員工流感 ${sf === null ? '未填' : sf + '%'}`]; }
-  if (a === 'oob') { const y = addDays(T, -1); const ds = DB.daily.filter(d => d.date === y); const ok = ds.filter(d => (+d.oob || 0) >= 2).length; return [ds.length && ok / ds.length >= .9 ? 'ok' : 'warn', `昨日下床 ≥ 2 次 ${ds.length ? Math.round(ok / ds.length * 100) : 0}%（${ok}/${ds.length}）`]; }
+  if (a === 'oob') { const y = addDays(T, -1); const elig = new Set(res.filter(r => r.mobility !== '臥床不宜移動' && r.status !== '住院中' && r.consciousness !== '意識不清').map(r => r.id)); const ds = DB.daily.filter(d => d.date === y && elig.has(d.rid)); const ok = ds.filter(d => (+d.oob || 0) >= 2).length; return [ds.length && ok / ds.length >= .9 ? 'ok' : 'warn', `昨日下床 ≥ 2 次 ${ds.length ? Math.round(ok / ds.length * 100) : 0}%（${ok}/${ds.length}）`]; }
   if (a === 'bath') { const need = isSummer(T) ? 3 : 2; const ok = res.filter(r => DB.daily.filter(d => d.rid === r.id && d.bath && diffDays(d.date, T) < 7 && d.date <= T).length >= need).length; const bb = res.filter(r => /臥床/.test(r.mobility || '')), y = addDays(T, -1); const tOk = bb.filter(r => { const d = DB.daily.find(x => x.rid === r.id && x.date === y); return d && Object.keys(d.turns || {}).length >= 10; }).length; return [pct(ok) >= 95 && tOk === bb.length ? 'ok' : 'warn', `近 7 天洗澡達 ${need} 次 ${pct(ok)}%｜臥床者昨日翻身紀錄完整 ${tOk}/${bb.length}`]; }
   if (a === 'toilet') { const n = res.filter(r => r.incontinence).length; const p = res.filter(r => r.incontinence && latestPlan(r.id) && (latestPlan(r.id).problems || []).some(x => /如廁|失禁/.test(x.problem))).length; return [n === p ? 'ok' : 'warn', `有失禁之虞 ${n} 人，照顧計畫含定時如廁 ${p} 人`]; }
   if (a === 'diet') return meetLine('膳食滿意度調查', 183);
   if (a === 'ng') { const n = res.filter(r => r.tubes && r.tubes.ng).length; return [n ? 'warn' : 'ok', n ? `管灌 ${n} 人：請確認個別空針、每日天然食材與技術稽核` : '目前無管灌住民（不適用）']; }
   if (a === 'satis') return meetLine('服務滿意度調查', 365);
-  if (a === 'drill' && accVer() === 'elder') { const ms = DB.meetings.filter(m => m.kind === '緊急災害應變演練' && m.date.startsWith(T.slice(0, 4))); const night = ms.some(m => /夜間/.test(m.title || '')), combo = ms.some(m => /複合/.test(m.title || '')); const el = DB.meetings.filter(m => m.kind === '用電設備自主檢查' && within(m.date, 31)).length; return [night && combo && el ? 'ok' : 'warn', `今年演練 ${ms.length} 次（夜間${night ? '✓' : '✗'}、複合型${combo ? '✓' : '✗'}）｜本月用電自主檢查${el ? '✓' : '✗'}`]; }
+  if (a === 'drill' && accVer() === 'elder') { const ms = DB.meetings.filter(m => m.kind === '緊急災害應變演練' && m.date.startsWith(T.slice(0, 4))); const night = ms.some(m => /夜間/.test((m.title || '') + (m.drillTypes || []).join())), combo = ms.some(m => /複合/.test((m.title || '') + (m.drillTypes || []).join())); const el = DB.meetings.filter(m => m.kind === '用電設備自主檢查' && within(m.date, 31)).length; return [night && combo && el ? 'ok' : 'warn', `今年演練 ${ms.length} 次（夜間${night ? '✓' : '✗'}、複合型${combo ? '✓' : '✗'}）｜本月用電自主檢查${el ? '✓' : '✗'}`]; }
   if (a === 'drill') { const y = DB.meetings.filter(m => m.kind === '緊急災害應變演練' && m.date.startsWith(T.slice(0, 4))).length; return [y >= Math.ceil((+T.slice(5, 7)) / 3) ? 'ok' : 'warn', `今年已演練 ${y} 次（每季 1 次、全年 ≥ 4）`]; }
   if (a === 'risk') return meetLine('危機事件半年分析', 184);
   if (a === 'water') { const w = lastMeet('水塔清洗'), q = lastMeet('飲用水大腸桿菌群檢測'), f = lastMeet('飲水機保養'); const ok = w && within(w.date, 184) && q && within(q.date, 92) && f && within(f.date, 31); return [ok ? 'ok' : 'warn', `水塔清洗 ${w ? roc(w.date) : '無'}｜水質檢測 ${q ? roc(q.date) : '無'}｜飲水機保養 ${f ? roc(f.date) : '無'}`]; }

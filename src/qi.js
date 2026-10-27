@@ -11,13 +11,18 @@ Object.assign(EVENT_FIELD_DEF, {
   hospCause: { label: '住院原因', type: 'select', options: ['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'] },
   hospCauseD: { label: '原因說明', type: 'text', ph: '例：肺積水、肺炎' },
   returnDate: { label: '返回機構日期（保留床截止）', type: 'date' },
-  fallCause: { label: '主要原因類別', type: 'select', options: ['個人因素', '環境因素', '藥物因素', '設備因素', '照護人力因素', '其他'] },
+  fallCause: { label: '主要原因類別', type: 'select', options: ['住民健康情況', '治療或藥物反應', '環境中危險因子', '其他因素'] },
+  healDate: { label: '癒合日期', type: 'date' },
   wChange: { label: '體重變化', type: 'select', options: ['減輕 ≥ 5%', '增加 ≥ 5%'] },
   qaSign: { label: '品管負責人', type: 'text' }, mgrSign: { label: '單位主管', type: 'text' },
 });
 EVENT_TYPES['非計畫性住院'].fields = ['hospPlanned', 'hospCause', 'hospCauseD', 'hospital', 'dx', 'returnDate'];
 EVENT_TYPES['跌倒'].fields = ['place', 'injury', 'fallCause'];
 EVENT_TYPES['非計畫性體重改變'].fields = ['wChange'];
+EVENT_TYPES['壓力性損傷'].fields = ['site', 'stage', 'origin', 'healDate'];
+EVENT_FIELD_DEF.injury = { label: '傷害嚴重度', type: 'select', options: ['無傷害', '1級（輕度：擦傷、瘀青）', '2級（中度：需縫合、扭傷）', '3級（重度：骨折、頭部外傷）', '死亡'] };
+EVENT_FIELD_DEF.infType = { label: '感染類別', type: 'select', options: ['上呼吸道感染', '下呼吸道感染（肺炎）', '泌尿道感染', '皮膚（疥瘡）', '腸胃道（腹瀉）', '不明原因發燒', '傷口感染', '其他'] };
+EVENT_FIELD_DEF.stage = { label: '分級', type: 'select', options: ['第 1 級', '第 2 級', '第 3 級', '第 4 級', '無法分級（Unstageable）', '深部組織損傷（SDTI）'] };
 const EVENT_COMMON_TOP = ['shift', 'within72', 'tubesAt', 'dxs', 'dxOther'];
 function shiftOf(time) { const h = +(time || '12').slice(0, 2); return h >= 7 && h < 15 ? 'D 白班' : h >= 15 && h < 23 ? 'E 小夜' : 'N 大夜'; }
 function eventDefaults(e) {
@@ -38,63 +43,83 @@ ACT.fuAdd = () => { $('#fuList').insertAdjacentHTML('beforeend', fuRow({ date: t
 ACT.fuDel = el => el.closest('.fu').remove();
 function readFollowups() { return $$('#fuList .fu').map(r => ({ date: r.querySelector('[data-fu=date]').value, text: r.querySelector('[data-fu=text]').value.trim() })).filter(f => f.text); }
 
-/* --- 指標定義：資料收集項目 + 監測公式 + 預設閾值（可在系統內修改） --- */
+/* --- 指標定義：依原系統「指標月報」公式（住院依機構紙本月統計表）；閾值原系統未設定，以下為參考值，請在「閾值設定」修改 --- */
 const QI = [
-  { no: 1, name: '跌倒指標監測', type: '跌倒',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['t', '當月住民跌倒人次'], ['p', '當月住民跌倒人數'], ['inj', '當月跌倒造成傷害人次'], ['sev', '當月跌倒造成重度傷害人次'], ['h72', '當月入住72小時(含)內跌倒人次'], ['night', '當月大夜班跌倒人次']],
-    cat: { field: 'fallCause', label: '因「%」跌倒人次', opts: ['個人因素', '環境因素', '藥物因素', '設備因素', '照護人力因素', '其他'] },
-    mon: [['1.1', '跌倒發生率', 't', 'n', 100, '%', '<', 3, '當月住民跌倒人次／當月住民總人數*100%'], ['1.2', '跌倒發生密度', 't', 'pd', 1000, '‰', '<', 1, '當月住民跌倒人次／當月住民總人日數*1000‰'], ['1.3', '跌倒造成傷害比率', 'inj', 't', 100, '%', '<', 50, '跌倒造成傷害人次／當月跌倒人次*100%'], ['1.4', '跌倒造成重度傷害比率', 'sev', 't', 100, '%', '<', 5, '重度傷害人次／當月跌倒人次*100%']] },
-  { no: 2, name: '壓力性損傷指標監測', type: '壓力性損傷',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['newT', '當月機構內新發生壓力性損傷人次'], ['newP', '當月機構內新發生壓力性損傷人數'], ['inT', '當月帶入（入住或住院返回）人次'], ['prevP', '當月有壓力性損傷之住民人數'], ['g2', '當月新發生第 2 級以上人次']],
-    mon: [['2.1', '機構內新發生率', 'newT', 'n', 100, '%', '<', 2, '當月新發生人次／當月住民總人數*100%'], ['2.2', '機構內新發生密度', 'newT', 'pd', 1000, '‰', '<', 0.5, '當月新發生人次／當月住民總人日數*1000‰'], ['2.3', '壓力性損傷盛行率', 'prevP', 'n', 100, '%', '<', 5, '當月有壓力性損傷住民人數／當月住民總人數*100%'], ['2.4', '新發生第 2 級以上比率', 'g2', 'newT', 100, '%', '', '', '第 2 級以上人次／當月新發生人次*100%']] },
-  { no: 3, name: '約束指標監測', type: null,
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['rd', '當月約束人日數'], ['rp', '當月約束人數'], ['bad', '當月同意書逾期或評估不完整人數']],
-    mon: [['3.1', '約束率（人日）', 'rd', 'pd', 100, '%', '<', 10, '當月約束人日數／當月住民總人日數*100%'], ['3.2', '約束人數比率', 'rp', 'n', 100, '%', '<', 10, '當月約束人數／當月住民總人數*100%'], ['3.3', '約束同意書完整率', 'okp', 'rp', 100, '%', '>=', 100, '同意書與評估完整人數／當月約束人數*100%']] },
-  { no: 4, name: '感染指標監測', type: '感染',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['t', '當月住民感染人次'], ['p', '當月住民感染人數'], ['h72', '當月入住72小時(含)內感染人次']],
-    cat: { field: 'infType', label: '「%」人次', opts: ['呼吸道感染', '泌尿道感染', '皮膚（疥瘡）', '腸胃道（腹瀉）', '不明原因發燒', '傷口感染', '其他'] },
-    mon: [['4.1', '感染發生率', 't', 'n', 100, '%', '<', 5, '當月住民感染人次／當月住民總人數*100%'], ['4.2', '感染密度', 't', 'pd', 1000, '‰', '<', 2, '當月住民感染人次／當月住民總人日數*1000‰']] },
-  { no: 5, name: '非計畫性轉至急性醫院住院指標監測', type: '非計畫性住院',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['allP', '當月轉至急性醫院住院住民之總人數'], ['newR', '當月新住民人數'], ['uP', '當月非計畫性轉至急性醫院住院人數'], ['allT', '當月全體住民轉至急性醫院住院人次'], ['uT', '當月非計畫性轉至急性醫院住院人次'], ['h72', '當月入住72小時(含)內非計畫性轉至急性醫院住院人次']],
-    cat: { field: 'hospCause', label: '因「%」非計畫性轉至急性醫院住院人次', opts: ['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'], den: 'uP', monLabel: '因「%」非計畫性轉至急性醫院住院之比率', base: '5.5' },
-    mon: [['5.1', '轉至急性醫院住院比率', 'allT', 'n', 100, '%', '<', 5, '當月全體住民轉至急性醫院住院人次／當月住民總人數*100%'], ['5.2', '轉至急性醫院住院密度', 'allT', 'pd', 100, '%', '<', 0.5, '當月全體住民轉至急性醫院住院人次／當月住民總人日數*100%'], ['5.3', '非計畫性轉急性醫院住院比率', 'uT', 'allP', 100, '%', '<=', 100, '當月非計畫性轉至急性醫院住院人次／當月轉至急性醫院住院住民之總人數*100'], ['5.4', '新住民入住72小時(含)內非計畫性轉至急性醫院住院比率', 'h72', 'newR', 100, '%', '<=', 0, '當月入住72小時(含)內非計畫性轉至急性醫院住院人次／當月新住民人數*100%']] },
-  { no: 6, name: '非計畫性體重改變指標監測', type: '非計畫性體重改變',
-    data: [['n', '當月住民總人數'], ['meas', '當月完成體重測量人數'], ['t', '當月非計畫性體重改變人數'], ['loss', '當月體重減輕 ≥ 5% 人數'], ['gain', '當月體重增加 ≥ 5% 人數']],
-    mon: [['6.1', '非計畫性體重改變比率', 't', 'n', 100, '%', '<', 5, '當月非計畫性體重改變人數／當月住民總人數*100%'], ['6.2', '體重測量完成率', 'meas', 'n', 100, '%', '>=', 95, '當月完成體重測量人數／當月住民總人數*100%']] },
-  { no: 7, name: '管路照護指標監測', type: '管路滑脫／自拔',
-    data: [['ngP', '當月留置鼻胃管人數'], ['foP', '當月留置導尿管人數'], ['tubeD', '當月管路留置人日數'], ['slip', '當月管路滑脫／自拔人次'], ['rem', '當月管路成功移除人次']],
-    mon: [['7.1', '管路滑脫／自拔密度', 'slip', 'tubeD', 1000, '‰', '<', 1, '當月管路滑脫自拔人次／當月管路留置人日數*1000‰'], ['7.2', '管路移除比率', 'rem', 'tubeP', 100, '%', '', '', '當月管路成功移除人次／當月留置管路人數*100%']] },
+  { no: 1, name: '跌倒指標監測', type: '跌倒', main: 'C',
+    data: [['A', '當月總住民人日數', '保留床人日數'], ['B', '當月有跌倒記錄住民人數'], ['C', '住民跌倒總件數'], ['D', '跌倒造成傷害總件數'], ['E', '重複跌倒者人數'], ['F1', '因住民健康情況而造成跌倒件數'], ['F2', '因治療或藥物反應而造成跌倒件數'], ['F3', '因環境中危險因子而造成跌倒件數'], ['F4', '因其他因素而造成跌倒件數'], ['G1', '跌倒傷害嚴重度1級'], ['G2', '跌倒傷害嚴重度2級'], ['G3', '跌倒傷害嚴重度3級']],
+    mon: [['1.1', '跌倒發生密度', 'C', 'A', 100, '%', '<', 0.2, 'C/A'], ['1.2', '跌倒造成傷害發生率', 'D', 'C', 100, '%', '<', 50, 'D/C'], ['1.3', '重複跌倒者佔跌倒者之比率', 'E', 'B', 100, '%', '', '', 'E/B'], ['1.4', '因住民健康情況而造成跌倒發生率', 'F1', 'C', 100, '%', '', '', 'F1/C'], ['1.5', '因治療或藥物反應而造成跌倒發生率', 'F2', 'C', 100, '%', '', '', 'F2/C'], ['1.6', '因環境中危險因子而造成跌倒發生率', 'F3', 'C', 100, '%', '', '', 'F3/C'], ['1.7', '因其他因素而造成跌倒發生率', 'F4', 'C', 100, '%', '', '', 'F4/C'], ['1.8', '跌倒傷害嚴重度1級發生率', 'G1', 'D', 100, '%', '', '', 'G1/D'], ['1.9', '跌倒傷害嚴重度2級發生率', 'G2', 'D', 100, '%', '', '', 'G2/D'], ['1.10', '跌倒傷害嚴重度3級發生率', 'G3', 'D', 100, '%', '<', 5, 'G3/D']],
+    cause: [['F1', '住民健康情況'], ['F2', '治療或藥物反應'], ['F3', '環境中危險因子'], ['F4', '其他因素']] },
+  { no: 2, name: '壓瘡指標監測', type: '壓力性損傷', main: 'E',
+    data: [['A', '測量當日住民總人數'], ['B', '測量當日有壓瘡人數'], ['C1', '第一級壓瘡現存人次'], ['C2', '第二級壓瘡現存人次'], ['C3', '第三級壓瘡現存人次'], ['C4', '第四級壓瘡現存人次'], ['C5', 'Unstageable現存人次'], ['C6', 'SDTI現存人次'], ['D', '當月住民總人數'], ['E', '入住後發生壓瘡總人次'], ['F1', '第一級壓瘡發生人次'], ['F2', '第二級壓瘡發生人次'], ['F3', '第三級壓瘡發生人次'], ['F4', '第四級壓瘡發生人次'], ['F5', 'Unstageable發生人次'], ['F6', 'SDTI發生人次']],
+    mon: [['2.1', '壓瘡點盛行率', 'B', 'A', 100, '%', '<', 5, 'B/A'], ['2.2', '壓瘡發生率', 'E', 'D', 100, '%', '<', 2, 'E/D']].concat(['一', '二', '三', '四'].map((c, i) => [`2.${3 + i}`, `${c}級壓瘡點盛行率`, `C${i + 1}`, 'A', 100, '%', '', '', `C${i + 1}/A`]), [['2.7', 'Unstageable盛行率', 'C5', 'A', 100, '%', '', '', 'C5/A'], ['2.8', 'SDTI盛行率', 'C6', 'A', 100, '%', '', '', 'C6/A']], ['一', '二', '三', '四'].map((c, i) => [`2.${9 + i}`, `${c}級壓瘡發生率`, `F${i + 1}`, 'D', 100, '%', '', '', `F${i + 1}/D`]), [['2.13', 'Unstageable發生率', 'F5', 'D', 100, '%', '', '', 'F5/D'], ['2.14', 'SDTI發生率', 'F6', 'D', 100, '%', '', '', 'F6/D']]) },
+  { no: 3, name: '身體約束指標監測', type: null, main: 'B',
+    data: [['A', '當月住民總人日數', '保留床人日數'], ['B', '當月受身體約束住民人數'], ['C1', '因預防跌倒所造成的約束人數'], ['C2', '因預防管路自拔所造成的約束人數'], ['C3', '因預防自傷所造成的約束人數'], ['C4', '因行為紊亂所造成的約束人數'], ['C5', '因協助治療所造成的約束人數'], ['C6', '因其他因素所造成的約束人數'], ['D1', '約束持續時間 >4 至 ≤8 小時人數'], ['D2', '約束持續時間 >8 至 ≤16 小時人數'], ['D3', '約束持續時間 >16 至 ≤24 小時人數'], ['E1', '住民受身體約束2種以上人數'], ['F1', '移除身體約束人次'], ['F2', '移除約束至少維持24小時以上住民人數']],
+    mon: [['3.1', '約束發生密度', 'B', 'A', 100, '%', '<', 0.5, 'B/A'], ['3.2', '約束持續時間 >4 至 ≤8 小時比率', 'D1', 'B', 100, '%', '', '', 'D1/B'], ['3.3', '約束持續時間 >8 至 ≤16 小時比率', 'D2', 'B', 100, '%', '', '', 'D2/B'], ['3.4', '約束持續時間 >16 至 ≤24 小時比率', 'D3', 'B', 100, '%', '', '', 'D3/B'], ['3.5', '約束移除成功率', 'F2', 'F1', 100, '%', '', '', 'F2/F1']],
+    cause: [['C1', '預防跌倒'], ['C2', '預防管路自拔'], ['C3', '預防自傷'], ['C4', '行為紊亂'], ['C5', '協助治療'], ['C6', '其他因素']] },
+  { no: 4, name: '感染指標監測', type: '感染', main: 'B',
+    data: [['A', '當月總住民人日數', '保留床人日數'], ['B', '感染人次'], ['C1', '呼吸道感染人次'], ['C2', '下呼吸道感染人次'], ['C3', '泌尿道感染人次'], ['D', '當月使用導尿管人日數'], ['E', '使用存留導尿管的泌尿道感染人次'], ['F', '當月未使用導尿管人日數'], ['G', '未使用存留導尿管的泌尿道感染人次'], ['C4', '皮膚感染人次'], ['C5', '腸胃道感染人次'], ['C6', '其它感染人次']],
+    mon: [['4.1', '感染發生密度', 'B', 'A', 1000, '‰', '<', 2, 'B/A'], ['4.2', '呼吸道感染發生密度', 'C1', 'A', 1000, '‰', '', '', 'C1/A'], ['4.3', '下呼吸道感染發生密度', 'C2', 'A', 1000, '‰', '', '', 'C2/A'], ['4.4', '泌尿道感染發生密度', 'C3', 'A', 1000, '‰', '', '', 'C3/A'], ['4.5', '使用存留導尿管的泌尿道感染發生密度', 'E', 'D', 1000, '‰', '', '', 'E/D'], ['4.6', '未使用存留導尿管的泌尿道感染發生密度', 'G', 'F', 1000, '‰', '', '', 'G/F'], ['4.7', '皮膚感染率發生密度', 'C4', 'A', 1000, '‰', '', '', 'C4/A'], ['4.8', '腸胃道感染率發生密度', 'C5', 'A', 1000, '‰', '', '', 'C5/A'], ['4.9', '其它感染率發生密度', 'C6', 'A', 1000, '‰', '', '', 'C6/A']],
+    cause: [['C1', '呼吸道感染'], ['C3', '泌尿道感染'], ['C4', '皮膚感染'], ['C5', '腸胃道感染'], ['C6', '其它感染']] },
+  { no: 5, name: '非計畫性轉至急性醫院住院指標監測', type: '非計畫性住院', main: 'uT',
+    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['allP', '當月轉至急性醫院住院住民之總人數'], ['newR', '當月新住民人數'], ['uP', '當月非計畫性轉至急性醫院住院人數'], ['allT', '當月全體住民轉至急性醫院住院人次'], ['uT', '當月非計畫性轉至急性醫院住院人次'], ['h72', '當月入住72小時(含)內非計畫性轉至急性醫院住院人次'], ['c0', '因「心血管代償機能減退」非計畫性轉至急性醫院住院人次'], ['c1', '因「腸胃道出血」非計畫性轉至急性醫院住院人次'], ['c2', '因「骨折」非計畫性轉至急性醫院住院人次'], ['c3', '因「感染」非計畫性轉至急性醫院住院人次'], ['c4', '因「其他內外科」非計畫性轉至急性醫院住院人次']],
+    mon: [['5.1', '轉至急性醫院住院比率', 'allT', 'n', 100, '%', '<', 5, '當月全體住民轉至急性醫院住院人次／當月住民總人數*100%'], ['5.2', '轉至急性醫院住院密度', 'allT', 'pd', 100, '%', '<', 0.5, '當月全體住民轉至急性醫院住院人次／當月住民總人日數*100%'], ['5.3', '非計畫性轉急性醫院住院比率', 'uT', 'allP', 100, '%', '<=', 100, '當月非計畫性轉至急性醫院住院人次／當月轉至急性醫院住院住民之總人數*100'], ['5.4', '新住民入住72小時(含)內非計畫性轉至急性醫院住院比率', 'h72', 'newR', 100, '%', '<=', 0, '當月入住72小時(含)內非計畫性轉至急性醫院住院人次／當月新住民人數*100%']].concat(['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'].map((o, i) => [`5.5.${i + 1}`, `因「${o}」非計畫性轉至急性醫院住院之比率`, 'c' + i, 'uP', 100, '%', '', '', `因「${o}」非計畫性轉至急性醫院住院人次／當月非計畫性轉至急性醫院住院人數*100%`])),
+    cause: [['c0', '心血管代償機能減退'], ['c1', '腸胃道出血'], ['c2', '骨折'], ['c3', '感染'], ['c4', '其他內外科']] },
+  { no: 6, name: '非計畫性體重改變指標監測', type: '非計畫性體重改變', main: 'B',
+    data: [['A', '入住超過30天(含)的住民數'], ['B', '體重減輕5%以上的住民數'], ['C', '體重增加5%以上的住民數'], ['D', '當月新住民人次'], ['D1', '入住時消瘦住民數（BMI<18.5）'], ['D2', '入住時過重住民數（BMI≥24）']],
+    mon: [['6.1', '非計畫性體重減輕比率', 'B', 'A', 100, '%', '<', 5, 'B/A'], ['6.2', '非計畫性體重增加比率', 'C', 'A', 100, '%', '<', 5, 'C/A'], ['6.3', '入住時消瘦住民比率', 'D1', 'D', 100, '%', '', '', 'D1/D'], ['6.4', '入住時過重住民比率', 'D2', 'D', 100, '%', '', '', 'D2/D']] },
+  { no: 7, name: '管路使用指標監測', type: '管路滑脫／自拔', main: 'B1',
+    data: [['A', '當月住民總人日數', '保留床人日數'], ['B1', '使用鼻胃管人日數'], ['B2', '使用存留導尿管人日數'], ['B3', '膀胱造廔人日數'], ['B4', '結腸造廔人日數'], ['S', '管路滑脫／自拔人次'], ['R', '管路成功移除人次']],
+    mon: [['7.1', '使用鼻胃管比率', 'B1', 'A', 100, '%', '', '', 'B1/A'], ['7.2', '使用存留導尿管比率', 'B2', 'A', 100, '%', '', '', 'B2/A'], ['7.3', '膀胱造廔比率', 'B3', 'A', 100, '%', '', '', 'B3/A'], ['7.4', '結腸造廔比率', 'B4', 'A', 100, '%', '', '', 'B4/A'], ['7.5', '管路滑脫／自拔密度', 'S', 'TD', 1000, '‰', '<', 1, '管路滑脫自拔人次／管路留置人日數*1000‰']] },
+  { no: 8, name: '疼痛指標監測', type: null, main: 'P',
+    data: [['A', '當月住民總人日數', '保留床人日數'], ['P', '疼痛（分數>0）紀錄人日數'], ['P4', '中重度疼痛（≥4分）紀錄人日數'], ['N', '有疼痛紀錄住民人數']],
+    mon: [['8.1', '當月機構疼痛比率', 'P', 'A', 100, '%', '', '', 'P/A'], ['8.2', '中重度疼痛比率', 'P4', 'A', 100, '%', '<', 2, 'P4/A']] },
 ];
 function qiThr(monId, def) { const t = (DB.settings.qiThr || {})[monId]; return t ? t : def; }
 
 /* --- 計算：保留床（住院期間）人日數不列入住民總人日數 --- */
 function hospDays(rid, f, t) {
   let n = 0;
-  DB.events.filter(e => e.rid === rid && e.type === '非計畫性住院' || (e.rid === rid && e.type === '計畫性住院')).forEach(e => {
-    const s = e.date > f ? e.date : f; let end = e.returnDate || (resById(rid) && resById(rid).status === '住院中' ? today() : e.date); end = end < t ? end : t;
+  DB.events.filter(e => e.rid === rid && e.type === '非計畫性住院').forEach(e => {
+    const s = e.date > f ? e.date : f; const lastH = DB.events.filter(x => x.rid === rid && x.type === '非計畫性住院').sort((a, b) => b.date.localeCompare(a.date))[0];
+    let end = e.returnDate || (e === lastH && resById(rid) && resById(rid).status === '住院中' ? today() : e.date); end = end < t ? end : t;
     if (end >= s) n += diffDays(s, end) + (e.returnDate && e.returnDate <= t ? 0 : 1);
   });
   return n;
 }
+function injuryLevel(e) { const s = e.injury || ''; return /3級|重度|骨折|死亡/.test(s) ? 3 : /2級|中度/.test(s) ? 2 : /1級|輕度/.test(s) ? 1 : 0; }
+function fallCauseKey(e) { const c = e.fallCause || ''; return /健康|個人/.test(c) ? 'F1' : /藥物|治療/.test(c) ? 'F2' : /環境|設備/.test(c) ? 'F3' : 'F4'; }
+function stageKey(e) { const s = e.stage || ''; return /1/.test(s) ? 1 : /2/.test(s) ? 2 : /3/.test(s) ? 3 : /4/.test(s) ? 4 : /無法|Unstage/i.test(s) ? 5 : /深部|SDTI/i.test(s) ? 6 : 2; }
+function infKey(e) { const s = e.infType || ''; return /下呼吸|肺炎/.test(s) ? 'low' : /呼吸/.test(s) ? 'resp' : /泌尿/.test(s) ? 'uti' : /皮膚|疥/.test(s) ? 'skin' : /腸|腹瀉/.test(s) ? 'gi' : 'other'; }
+function heightOf(r) { if (r.height) return +r.height; const m = DB.assessments.filter(a => a.rid === r.id && a.type === 'mna' && a.extra && a.extra.height).sort((a, b) => b.date.localeCompare(a.date))[0]; return m ? +m.extra.height : 0; }
 function qiCompute(ind, f, t) {
+  const tt = t < today() ? t : today();
   const rs = DB.residents.filter(r => r.admitDate && r.admitDate <= t && (!r.dischargeDate || r.dischargeDate >= f));
-  let rawPd = 0, hosp = 0; rs.forEach(r => { const s = r.admitDate > f ? r.admitDate : f; const end0 = r.dischargeDate || t; const e = end0 < t ? end0 : (t < today() ? t : today()); if (e >= s) rawPd += diffDays(s, e) + 1; hosp += hospDays(r.id, f, t); });
-  const D = { pd: rawPd - hosp, pdEx: hosp, n: rs.length, newR: rs.filter(r => r.admitDate >= f && r.admitDate <= t).length };
+  const stay = r => { const s = r.admitDate > f ? r.admitDate : f; const e0 = r.dischargeDate || tt; const e = e0 < tt ? e0 : tt; return e >= s ? diffDays(s, e) + 1 : 0; };
+  let rawPd = 0, hosp = 0; rs.forEach(r => { rawPd += stay(r); hosp += hospDays(r.id, f, t); });
+  const pd = rawPd - hosp, D = { A: pd, pd, pdEx: hosp, n: rs.length, newR: rs.filter(r => r.admitDate >= f && r.admitDate <= t).length };
   const ev = ind.type ? DB.events.filter(e => e.type === ind.type && e.date >= f && e.date <= t) : [];
   const uniq = a => new Set(a.map(e => e.rid)).size;
   const w72 = e => { const r = resById(e.rid); return e.within72 === '是' || (r && r.admitDate && diffDays(r.admitDate, e.date) <= 3 && e.date >= r.admitDate); };
-  if (ind.no === 1) Object.assign(D, { t: ev.length, p: uniq(ev), inj: ev.filter(e => e.injury && !/^無/.test(e.injury)).length, sev: ev.filter(e => /重度|死亡/.test(e.injury || '')).length, h72: ev.filter(w72).length, night: ev.filter(e => /^N/.test(e.shift || shiftOf(e.time))).length });
-  if (ind.no === 2) { const nw = ev.filter(e => (e.origin || '機構內新發生') === '機構內新發生'); Object.assign(D, { newT: nw.length, newP: uniq(nw), inT: ev.length - nw.length, prevP: uniq(DB.events.filter(e => e.type === '壓力性損傷' && e.date <= t && (e.status !== '結案' || (e.updated || '').slice(0, 10) >= f))), g2: nw.filter(e => !/第 1 級/.test(e.stage || '')).length }); }
-  if (ind.no === 3) { const rr = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f)); let rd = 0; rr.forEach(x => { const s = x.startDate > f ? x.startDate : f; const e0 = x.endDate || today(); const e = e0 < t ? e0 : t; if (e >= s) rd += diffDays(s, e) + 1; }); const bad = rr.filter(x => !x.consentDate || diffDays(x.consentDate, t < today() ? t : today()) > 90 || !(x.alternatives || []).length).length; Object.assign(D, { rd, rp: new Set(rr.map(x => x.rid)).size, bad, okp: new Set(rr.map(x => x.rid)).size - bad }); }
-  if (ind.no === 4) Object.assign(D, { t: ev.length, p: uniq(ev), h72: ev.filter(w72).length });
-  if (ind.no === 5) { const all = ev, un = ev.filter(e => !/^計畫性/.test(e.hospPlanned || '')); Object.assign(D, { allP: uniq(all), allT: all.length, uP: uniq(un), uT: un.length, h72: un.filter(w72).length }); ev.splice(0, ev.length, ...un); }
-  if (ind.no === 6) Object.assign(D, { meas: rs.filter(r => DB.weights.some(w => w.rid === r.id && w.date >= f && w.date <= t)).length, t: uniq(ev), loss: uniq(ev.filter(e => /減輕/.test(e.wChange || '減輕'))), gain: uniq(ev.filter(e => /增加/.test(e.wChange || ''))) });
-  if (ind.no === 7) { const ng = rs.filter(r => r.tubes && r.tubes.ng), fo = rs.filter(r => r.tubes && r.tubes.foley); const days = diffDays(f, t < today() ? t : today()) + 1; Object.assign(D, { ngP: ng.length, foP: fo.length, tubeP: ng.length + fo.length, tubeD: (ng.length + fo.length) * days, slip: ev.length, rem: DB.events.filter(e => e.type === '管路移除' && e.date >= f && e.date <= t).length }); }
-  if (ind.cat) ind.cat.opts.forEach((o, i) => D['c' + i] = ev.filter(e => (e[ind.cat.field] || (ind.no === 1 ? '其他' : ind.cat.opts[ind.cat.opts.length - 1])) === o).length);
-  // 人工覆寫（例如保留床人日數）
-  const ov = ((DB.settings.qiOverride || {})[`${ind.no}|${f.slice(0, 7)}`]) || {}; Object.assign(D, ov);
+  const exA = ['A'];
+  if (ind.no === 1) { const byR = {}; ev.forEach(e => byR[e.rid] = (byR[e.rid] || 0) + 1); const allYear = DB.events.filter(e => e.type === '跌倒' && e.date <= t && diffDays(e.date, t) <= 365);
+    Object.assign(D, { B: uniq(ev), C: ev.length, D: ev.filter(e => injuryLevel(e) > 0).length, E: Object.keys(byR).filter(rid => allYear.filter(e => e.rid === rid).length >= 2).length, F1: 0, F2: 0, F3: 0, F4: 0, G1: ev.filter(e => injuryLevel(e) === 1).length, G2: ev.filter(e => injuryLevel(e) === 2).length, G3: ev.filter(e => injuryLevel(e) === 3).length }); ev.forEach(e => D[fallCauseKey(e)]++); }
+  if (ind.no === 2) { const all = DB.events.filter(e => e.type === '壓力性損傷' && e.date <= t && (!e.healDate || e.healDate > t) && !(e.status === '結案' && !e.healDate && (e.updated || e.date).slice(0, 10) <= t)); const nw = ev.filter(e => (e.origin || '機構內新發生') === '機構內新發生');
+    Object.assign(D, { A: rs.filter(r => !r.dischargeDate || r.dischargeDate >= tt).length, B: uniq(all), D: rs.length, E: nw.length }); for (let i = 1; i <= 6; i++) { D['C' + i] = all.filter(e => stageKey(e) === i).length; D['F' + i] = nw.filter(e => stageKey(e) === i).length; } exA.length = 0; }
+  if (ind.no === 3) { const rr = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f)); const rk = x => (x.reasons || []).map(r => /跌倒/.test(r) ? 'C1' : /管路/.test(r) ? 'C2' : /自傷/.test(r) ? 'C3' : /行為/.test(r) ? 'C4' : /治療/.test(r) ? 'C5' : 'C6');
+    Object.assign(D, { B: new Set(rr.map(x => x.rid)).size, C1: 0, C2: 0, C3: 0, C4: 0, C5: 0, C6: 0, D1: rr.filter(x => /4.*8/.test(x.hours || '')).length, D2: rr.filter(x => /8.*16/.test(x.hours || '')).length, D3: rr.filter(x => /16.*24/.test(x.hours || '')).length, E1: rr.filter(x => x.form2).length });
+    rr.forEach(x => [...new Set(rk(x))].forEach(k => D[k]++)); const removed = DB.restraints.filter(x => x.endDate && x.endDate >= f && x.endDate <= t); D.F1 = removed.length; D.F2 = removed.filter(x => !DB.restraints.some(y => y.rid === x.rid && y !== x && y.startDate >= x.endDate && diffDays(x.endDate, y.startDate) <= 1)).length; }
+  if (ind.no === 4) { const k = ev.map(e => [e, infKey(e)]); const foley = r => r.tubes && r.tubes.foley; const fd = rs.filter(foley).reduce((s, r) => s + stay(r), 0);
+    Object.assign(D, { B: ev.length, C1: k.filter(x => x[1] === 'resp' || x[1] === 'low').length, C2: k.filter(x => x[1] === 'low').length, C3: k.filter(x => x[1] === 'uti').length, D: fd, F: pd - fd, E: k.filter(x => x[1] === 'uti' && ((x[0].tubesAt || []).includes('導尿管') || foley(resById(x[0].rid) || {}))).length, C4: k.filter(x => x[1] === 'skin').length, C5: k.filter(x => x[1] === 'gi').length, C6: k.filter(x => x[1] === 'other').length }); D.G = D.C3 - D.E; }
+  if (ind.no === 5) { const un = ev.filter(e => !/^計畫性/.test(e.hospPlanned || '')); Object.assign(D, { allP: uniq(ev), allT: ev.length, uP: uniq(un), uT: un.length, h72: un.filter(w72).length }); ['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'].forEach((o, i) => D['c' + i] = un.filter(e => (e.hospCause || '其他內外科') === o).length); ev.splice(0, ev.length, ...un); }
+  if (ind.no === 6) { const A = rs.filter(r => diffDays(r.admitDate, tt) >= 30); const chg = r => { const ws = weightsOf(r.id).filter(w => w.date <= t); const inM = ws.filter(w => w.date >= f); let loss = false, gain = false; inM.forEach(w => ws.filter(p => p.date < w.date && diffDays(p.date, w.date) <= 31).forEach(p => { const pc = (w.kg - p.kg) / p.kg * 100; if (pc <= -5) loss = true; if (pc >= 5) gain = true; })); ev.filter(e => e.rid === r.id).forEach(e => { if (/增加/.test(e.wChange || '')) gain = true; else loss = true; }); return { loss, gain }; };
+    const nr = rs.filter(r => r.admitDate >= f && r.admitDate <= t); const bmi0 = r => { const h = heightOf(r), w = weightsOf(r.id)[0]; return h && w ? w.kg / Math.pow(h / 100, 2) : 0; };
+    Object.assign(D, { A: A.length, B: A.filter(r => chg(r).loss).length, C: A.filter(r => chg(r).gain).length, D: nr.length, D1: nr.filter(r => bmi0(r) && bmi0(r) < 18.5).length, D2: nr.filter(r => bmi0(r) >= 24).length }); exA.length = 0; }
+  if (ind.no === 7) { const td = k => rs.filter(r => r.tubes && r.tubes[k]).reduce((s, r) => s + stay(r), 0); Object.assign(D, { B1: td('ng'), B2: td('foley'), B3: td('cysto'), B4: td('colo'), S: ev.length, R: DB.events.filter(e => e.type === '管路移除' && e.date >= f && e.date <= t).length }); D.TD = D.B1 + D.B2 + D.B3 + D.B4; }
+  if (ind.no === 8) { const dd = DB.daily.filter(d => d.date >= f && d.date <= t && d.pain !== '' && d.pain != null); Object.assign(D, { P: dd.filter(d => +d.pain > 0).length, P4: dd.filter(d => +d.pain >= 4).length, N: new Set(dd.filter(d => +d.pain > 0).map(d => d.rid)).size }); }
+  if (!exA.length) D.pdEx = '';
+  const oneMonth = f.slice(8) === '01' && t === monthRange(f.slice(0, 7))[1];
+  const ov = oneMonth ? (((DB.settings.qiOverride || {})[`${ind.no}|${f.slice(0, 7)}`]) || {}) : {}; Object.assign(D, ov); if (ov.pd !== undefined) D.A = ov.pd; if (ov.A !== undefined) D.pd = ov.A;
   const M = ind.mon.map(([id, name, num, den, mult, unit, op, thr, formula]) => { const T = qiThr(id, { op, v: thr }); const v = D[den] ? D[num] / D[den] * mult : 0; return { id, name, num, den, unit, v, op: T.op, thr: T.v, formula, ok: !T.op || T.v === '' ? null : qiPass(v, T) }; });
-  if (ind.cat && ind.cat.base) ind.cat.opts.forEach((o, i) => M.push({ id: `${ind.cat.base}.${i + 1}`, name: ind.cat.monLabel.replace('%', o), unit: '%', v: D[ind.cat.den] ? D['c' + i] / D[ind.cat.den] * 100 : 0, op: '', thr: '', formula: `${ind.cat.label.replace('%', o)}／當月非計畫性轉至急性醫院住院人數*100%`, ok: null }));
   return { D, M, ev };
 }
 function qiPass(v, T) { const x = +(+v).toFixed(2), y = +T.v; return T.op === '<' ? x < y : T.op === '<=' ? x <= y : T.op === '>=' ? x >= y : T.op === '>' ? x > y : null; }
@@ -109,19 +134,19 @@ function qiTabs(active) {
 let qiMonth = null;
 ROUTES.qimonth = () => {
   const m = qiMonth || today().slice(0, 7), [f, t] = monthRange(m), done = (DB.settings.qiMonthDone || {})[m];
-  const months = [...Array(12)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return ymd(d).slice(0, 7); });
+  const months = [...Array(12)].map((_, i) => { const n = new Date(); return ymd(new Date(n.getFullYear(), n.getMonth() - i, 1)).slice(0, 7); });
   return `${qiTabs('qimonth')}<div class="hd"><div><h1>指標監測月統計表</h1><p class="sub">資料收集數值由系統自動計算（人日數已扣除住院保留床人日）。數值有誤可直接修改，會記錄為人工校正。每月 5 日前確認上月報表。</p></div><span class="sp"></span>
     <select id="qmSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${months.map(x => `<option${x === m ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
   <div class="row" style="margin-bottom:12px"><span class="chip ${done ? 'ok' : 'warn'}">${done ? `已確認（${esc(done.by)}，${roc(done.date)}）` : '尚未確認'}</span><span class="sp"></span><button class="btn" data-act="qmPrint" data-m="${m}">列印／Word：全部指標</button><button class="btn pri" data-act="qmDone" data-m="${m}">確認本月報表</button></div>
   ${QI.map(ind => { const { D, M } = qiCompute(ind, f, t); const ov = (DB.settings.qiOverride || {})[`${ind.no}|${m}`] || {};
     return `<details class="acc-item" ${M.some(x => x.ok === false) ? 'open' : ''}><summary><span class="code">${ind.no}</span><b style="flex:1">${ind.name}</b>${M.some(x => x.ok === false) ? '<span class="chip bad">超過閾值</span>' : '<span class="chip ok">閾值內</span>'}<button class="btn sm" data-act="qmPrintOne" data-m="${m}" data-no="${ind.no}">列印</button></summary>
-    <div class="body grid g2" style="align-items:start"><div><h3>資料收集</h3><table class="t">${ind.data.map(([k, l, ex]) => `<tr><td>${l}</td><td style="width:90px"><input type="number" class="qmIn" data-no="${ind.no}" data-m="${m}" data-k="${k}" value="${D[k]}" style="width:80px;padding:4px;border:1px solid ${ov[k] !== undefined ? 'var(--amber)' : 'var(--line)'};border-radius:6px"></td><td class="small muted">${ex ? `${ex} ${D.pdEx}` : ''}</td></tr>`).join('')}
-      ${ind.cat ? ind.cat.opts.map((o, i) => `<tr><td>${ind.cat.label.replace('%', o)}</td><td>${D['c' + i]}</td><td></td></tr>`).join('') : ''}</table></div>
+    <div class="body grid g2" style="align-items:start"><div><h3>資料收集</h3><table class="t">${ind.data.map(([k, l, ex]) => `<tr><td>${l}${/^[A-Z]\d?$/.test(k) ? `(${k})` : ''}</td><td style="width:90px"><input type="number" class="qmIn" data-no="${ind.no}" data-m="${m}" data-k="${k}" value="${D[k]}" style="width:80px;padding:4px;border:1px solid ${ov[k] !== undefined ? 'var(--amber)' : 'var(--line)'};border-radius:6px"></td><td class="small muted">${ex && D.pdEx !== '' ? `${ex} ${D.pdEx}` : ''}</td></tr>`).join('')}
+</table></div>
     <div><h3>指標監測</h3><table class="t">${M.map(x => `<tr><td class="nowrap">${x.id}</td><td>${esc(x.name)}<div class="small muted">${esc(x.formula)}</div></td><td class="nowrap">${thrText(x)}</td><td class="nowrap"><b style="color:${x.ok === false ? 'var(--bad)' : 'inherit'}">${fmtV(x)}</b></td></tr>`).join('')}</table></div></div></details>`; }).join('')}`;
 };
 ROUTES.after_qimonth = () => {
   $('#qmSel').addEventListener('change', e => { qiMonth = e.target.value; refresh(); });
-  $$('.qmIn').forEach(i => i.addEventListener('change', () => { const key = `${i.dataset.no}|${i.dataset.m}`; const o = DB.settings.qiOverride || {}; o[key] = Object.assign({}, o[key], { [i.dataset.k]: +i.value }); setKV('settings', 'qiOverride', o); toast('已人工校正，監測值已重新計算'); refresh(); }));
+  $$('.qmIn').forEach(i => i.addEventListener('change', () => { const key = `${i.dataset.no}|${i.dataset.m}`; const o = DB.settings.qiOverride || {}; o[key] = Object.assign({}, o[key]); if (i.value === '') delete o[key][i.dataset.k]; else o[key][i.dataset.k] = +i.value; setKV('settings', 'qiOverride', o); toast(i.value === '' ? '已還原系統計算值' : '已人工校正，監測值已重新計算（清空欄位可還原）'); refresh(); }));
 };
 ACT.qmDone = el => { const o = DB.settings.qiMonthDone || {}; o[el.dataset.m] = { by: currentUser(), date: today() }; setKV('settings', 'qiMonthDone', o); toast('已確認本月指標報表'); refresh(); };
 
@@ -134,16 +159,16 @@ const PDCA_HINT = {
 };
 function pdcaAuto(ind, q) {
   const [f, t] = quarterRange(q), pq = prevQuarter(q), cur = qiCompute(ind, f, t), prev = qiCompute(ind, ...quarterRange(pq)), m0 = cur.M[0], p0 = prev.M[0];
-  const months = [0, 1, 2].map(i => { const d = new Date(f + 'T00:00:00'); d.setMonth(d.getMonth() + i); return ymd(d).slice(0, 7); }).filter(m => m <= today().slice(0, 7));
+  const months = [0, 1, 2].map(i => { const d0 = new Date(f + 'T00:00:00'); return ymd(new Date(d0.getFullYear(), d0.getMonth() + i, 1)).slice(0, 7); }).filter(m => m <= today().slice(0, 7));
   const mm = months.map(m => qiCompute(ind, ...monthRange(m)));
   const qLabel = `${+q.slice(0, 4) - 1911} 年 ${(+q.slice(-1) - 1) * 3 + 1} 至 ${+q.slice(-1) * 3} 月`;
-  const cnt = (ind.no === 5 ? cur.D.uT : cur.D.t ?? cur.D.newT ?? cur.D.rp ?? cur.D.slip) || 0;
-  const problem = `${qLabel}${ind.name.replace('指標監測', '')}${ind.no === 3 ? `約束人數 N=${cur.D.rp}` : `人次 N=${cnt}`}，${m0.name}為 ${fmtV(m0)}，${m0.ok === false ? `超過設定閾值 ${thrText(m0)}` : `未超過設定閾值 ${thrText(m0)}`}。`;
+  const lbl = (ind.data.find(d => d[0] === ind.main) || [, '件數'])[1].replace(/^當月/, '');
+  const problem = `${qLabel}${lbl.includes(ind.name.replace('指標監測', '')) ? '' : ind.name.replace('指標監測', '')}${lbl} N=${cur.D[ind.main] || 0}，${m0.name}為 ${fmtV(m0)}，${m0.op && m0.thr !== '' ? (m0.ok === false ? `超過設定閾值 ${thrText(m0)}` : `未超過設定閾值 ${thrText(m0)}`) : '尚未設定閾值'}。`;
   let cause = '';
-  if (ind.cat) { const tot = ind.cat.opts.reduce((s, o, i) => s + cur.D['c' + i], 0) || 1; cause = ind.cat.opts.map((o, i) => [o, cur.D['c' + i]]).filter(x => x[1]).map(([o, n], i) => `${i + 1}. ${o}人次 n=${n}（${(n / tot * 100).toFixed(1)}%）。`).join('\n'); }
+  if (ind.cause) { const tot = ind.cause.reduce((s, [k]) => s + (cur.D[k] || 0), 0) || 1; cause = ind.cause.filter(([k]) => cur.D[k]).map(([k, o], i) => `${i + 1}. ${o} n=${cur.D[k]}（${(cur.D[k] / tot * 100).toFixed(1)}%）。`).join('\n'); }
   if (!cause) cause = cur.ev.map((e, i) => `${i + 1}. ${roc(e.date)} ${(e.cause || '原因待分析').slice(0, 40)}`).join('\n') || '本季無發生案件。';
-  const check = `1. ${months.map(m => +m.slice(5)).join('、')} 月分別為 ${mm.map(x => `${ind.no === 5 ? x.D.uT : (x.D.t ?? x.D.newT ?? x.D.rp ?? x.D.slip ?? 0)}（${fmtV(x.M[0])}）`).join('、')}，續監測。`;
-  return { A: thrText(m0), B: fmtV(p0), C: fmtV(m0), dA: m0.thr !== '' && m0.op ? (m0.v - m0.thr).toFixed(1) + m0.unit : '－', dB: (m0.v - p0.v).toFixed(1) + m0.unit, problem, cause, check, period: qLabel };
+  const check = `1. ${months.map(m => +m.slice(5)).join('、')} 月分別為 ${mm.map(x => `${x.D[ind.main] || 0}（${fmtV(x.M[0])}）`).join('、')}，續監測。`;
+  return { A: thrText(m0), B: fmtV(p0), C: fmtV(m0), dA: m0.thr !== '' && m0.op ? (m0.v - m0.thr).toFixed(2) + m0.unit : '－', dB: (m0.v - p0.v).toFixed(2) + m0.unit, problem, cause, check, period: qLabel };
 }
 ROUTES.qipdca = () => {
   const q = qiQ || prevQuarter(quarterOf(today())), P = ((DB.quarterly[q] || {}).pdca) || {};
@@ -217,7 +242,7 @@ PR.event = async function (id) {
 };
 function monthPage(ind, m) {
   const [f, t] = monthRange(m), { D, M } = qiCompute(ind, f, t);
-  const rows = ind.data.map(([k, l, ex]) => [l, D[k], ex ? `${ex}<br>${D.pdEx}` : '']).concat(ind.cat ? ind.cat.opts.map((o, i) => [ind.cat.label.replace('%', o), D['c' + i], '']) : []);
+  const rows = ind.data.map(([k, l, ex]) => [l + (/^[A-Z]\d?$/.test(k) ? `(${k})` : ''), D[k], ex && D.pdEx !== '' ? `${ex}<br>${D.pdEx}` : '']);
   const n = Math.max(rows.length, M.length);
   return `<!--land--><div class="org">${esc(DB.settings.org || '')}</div><h1>指標監測月統計表-${ind.no}${ind.name}</h1><div class="meta"><span>年度：${+m.slice(0, 4) - 1911}　　月份：${+m.slice(5)}</span><span>監測人：＿＿＿＿＿</span></div>
     <table><tr><th colspan="4">資料收集</th><th colspan="6">指標監測</th></tr><tr><th style="width:4%">項次</th><th style="width:19%">品質管理項目</th><th style="width:5%">數值</th><th style="width:6%">排除因子</th><th style="width:5%">項次</th><th style="width:14%">監測項目</th><th style="width:30%">公式</th><th style="width:6%">閾值</th><th style="width:6%">監測值</th><th style="width:5%">備註</th></tr>

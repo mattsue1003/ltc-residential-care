@@ -136,9 +136,10 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-off
 .bar i{display:block;height:100%;background:var(--pri)}
 #modal{position:fixed;inset:0;background:rgba(10,25,28,.45);display:none;align-items:flex-start;justify-content:center;z-index:50;padding:40px 16px;overflow:auto}
 #modal.on{display:flex}
+.phview{position:fixed;inset:0;background:rgba(10,25,28,.6);z-index:70;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto}.phview .box{background:var(--panel);border-radius:14px;max-width:760px;width:100%;padding:20px 22px}.phview .foot{display:flex;gap:8px;margin-top:12px}
 #modal .box{background:var(--panel);border-radius:14px;max-width:760px;width:100%;padding:20px 22px;box-shadow:0 20px 60px rgba(0,0,0,.25)}
 #modal .box h2{margin-top:0}
-#modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+#modal .foot{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;border-top:1px solid var(--line);padding:12px 0 4px;position:sticky;bottom:-20px;background:var(--panel);z-index:2}
 #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;gap:6px;z-index:60;align-items:center}
 #toast div{background:var(--ink);color:var(--panel);padding:9px 16px;border-radius:20px;font-size:14px;box-shadow:var(--sh);animation:tin .2s}
 #toast div.bad{background:var(--bad);color:#fff}
@@ -166,6 +167,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-off
 .bs-slots{display:grid;grid-template-columns:repeat(6,1fr);gap:5px;margin-top:8px}.bs-slot{padding:6px 2px;border:1px solid var(--line);border-radius:8px;background:var(--panel);font-size:13px;cursor:pointer;line-height:1.2}.bs-slot small{display:block;color:var(--muted);font-size:11px}
 .bs-slot.on{background:var(--pri-soft);border-color:var(--pri);color:var(--pri-d);font-weight:600}.bs-slot.now{outline:2px solid var(--acc)}.bs-slot.future{opacity:.55}
 .bs-next{padding:12px 22px;font-size:16px}
+.resfind{display:block;width:100%;margin:4px 0 4px;padding:7px 10px;border:1px dashed var(--pri);border-radius:8px;background:var(--pri-soft);color:var(--ink);font-size:14px}
 .tpl-bar{display:flex;gap:8px;align-items:flex-end;margin-bottom:10px;padding:10px;background:var(--pri-soft);border-radius:10px}.tpl-bar label{flex:1}
 .q.cur{border-color:var(--pri);box-shadow:0 0 0 2px var(--pri-soft)}
 @media (max-width:860px){.bs-grid{grid-template-columns:repeat(3,1fr)}}
@@ -176,7 +178,8 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--pri);outline-off
 footer.cr{color:var(--muted);font-size:12px;margin-top:30px;text-align:center}
 .mnav{display:none}
 @media (max-width:860px){
-  #app{grid-template-columns:1fr;grid-template-rows:56px auto 1fr}
+  #app{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto 1fr}
+  header.top{flex-wrap:wrap;height:auto;padding:8px 12px;gap:8px}.brand{min-width:0;flex:1;overflow:hidden}.brand>div{overflow:hidden;text-overflow:ellipsis}.search{order:3;flex-basis:100%;max-width:none}
   nav.side{position:static;height:auto;display:flex;overflow-x:auto;padding:6px 8px;border-right:0;border-bottom:1px solid var(--line);gap:2px}
   nav.side a{flex:none;padding:7px 10px;font-size:13.5px}
   nav.side .sec{display:none}
@@ -249,7 +252,7 @@ const SCALES = {
     ].map(q => [q[0], [[0,'答對'],[1,'答錯']]]),
     extra: [{ key: 'edu', label: '教育程度校正', type: 'select', options: ['國小（不校正）','未受教育（錯誤數可多 1）','高中以上（錯誤數需少 1）'] }],
     max: 10, unit: '錯',
-    adjust(raw, ex) { const e = ex && ex.edu || ''; return e.startsWith('未受') ? Math.max(0, raw - 1) : e.startsWith('高中') ? raw + 1 : raw; },
+    adjust(raw, ex) { const e = ex && ex.edu || ''; return e.startsWith('未受') ? Math.max(0, raw - 1) : e.startsWith('高中') ? Math.min(10, raw + 1) : raw; },
     level(s) { return s <= 2 ? ['心智功能完好','ok'] : s <= 4 ? ['輕度認知障礙','warn'] : s <= 7 ? ['中度認知障礙','bad'] : ['重度認知障礙','bad']; },
   },
   gds: {
@@ -353,9 +356,11 @@ function scoreScale(type, answers, extra) {
   const score = sc.adjust ? sc.adjust(raw, extra) : raw;
   return { score, level: sc.level(score) };
 }
-function answeredAll(type, answers) {
+function answeredAll(type, answers, extra) {
   const sc = SCALES[type];
   if (sc.form) return true;
+  if (type === 'gds' && extra && extra.na) return true;
+  if (type === 'pain' && extra && extra.nrs !== undefined && extra.nrs !== '') return true;
   return sc.items.every((_, i) => answers[i] !== undefined && answers[i] !== null && answers[i] !== '');
 }
 
@@ -827,7 +832,8 @@ function latestAssess(rid) {
   return out;
 }
 function latestContact(rid, kind) { return DB.contacts.filter(c => c.rid === rid && c.kind === kind).sort((a, b) => b.date.localeCompare(a.date))[0]; }
-function latestPlan(rid) { return DB.plans.filter(p => p.rid === rid).sort((a, b) => b.date.localeCompare(a.date))[0]; }
+function planSort(a, b) { return b.date.localeCompare(a.date) || (b.created || '').localeCompare(a.created || ''); }
+function latestPlan(rid) { return DB.plans.filter(p => p.rid === rid).sort(planSort)[0]; }
 function weightsOf(rid) { return DB.weights.filter(w => w.rid === rid).sort((a, b) => a.date.localeCompare(b.date)); }
 function activeRestraint(rid) { return DB.restraints.find(x => x.rid === rid && !x.endDate); }
 function contactEvery(k) { return k === '醫師巡診' ? facType().doctor : (CONTACT_KINDS[k] || {}).every || 0; }
@@ -871,7 +877,7 @@ function buildReminders() {
       const due = addDays(fam || p.date, 183);
       if (!fam) push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: '照顧計畫尚未與家屬共同討論', due: addDays(p.date, 30), level: status(addDays(p.date, 30)), act: `plan:${r.id}` });
       else if (diffDays(T, due) <= 14) push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: `每半年與家屬共同修正照顧計畫（上次 ${roc(fam)}）`, due, level: status(due), act: `plan:${r.id}` });
-      const evalDue = (p.problems || []).map(x => x.evalDate).filter(Boolean).sort()[0];
+      const evalDue = (p.problems || []).filter(x => !/已達成|問題解除/.test(x.result || '')).map(x => x.evalDate).filter(Boolean).sort()[0];
       if (evalDue && diffDays(T, evalDue) <= 7) push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: '照顧問題到期評值', due: evalDue, level: status(evalDue), act: `plan:${r.id}` });
     }
     // 醫師、藥師、家屬、健檢
@@ -900,11 +906,12 @@ function buildReminders() {
       push({ rid: r.id, cat: '體重', ref: 'B18', title: `30 天內體重${wa.pct > 0 ? '增加' : '減少'} ${Math.abs(wa.pct).toFixed(1)}%，需收案分析`, due: wa.to.date, level: 'bad', act: `event:${r.id}:非計畫性體重改變` });
     // 每日照護
     const dToday = DB.daily.find(d => d.rid === r.id && d.date === T);
-    if (!dToday || dToday.temp === undefined || dToday.temp === '') push({ rid: r.id, cat: '每日', ref: 'B9', title: '今日體溫尚未記錄', due: T, level: 'info', act: 'daily' });
-    const y = addDays(T, -1), dY = DB.daily.find(d => d.rid === r.id && d.date === y);
+    const away = r.status === '住院中';
+    if (!away && (!dToday || dToday.temp === undefined || dToday.temp === '')) push({ rid: r.id, cat: '每日', ref: 'B9', title: '今日體溫尚未記錄', due: T, level: 'info', act: 'daily' });
+    const y = addDays(T, -1), dY = (r.admitDate < y && !away) ? (DB.daily.find(d => d.rid === r.id && d.date === y) || { oob: 0 }) : null;
     if (dY && r.mobility !== '臥床不宜移動' && (+dY.oob || 0) < (r.consciousness === '意識不清' ? 1 : 2))
       push({ rid: r.id, cat: '每日', ref: 'B24', title: `昨日下床 ${+dY.oob || 0} 次（應至少 ${r.consciousness === '意識不清' ? 1 : 2} 次）`, due: y, level: 'warn', act: 'daily' });
-    if (daysIn >= 7) {
+    if (daysIn >= 7 && !away) {
       const baths = DB.daily.filter(d => d.rid === r.id && d.bath && diffDays(d.date, T) < 7 && d.date <= T).length;
       const need = isSummer(T) ? 3 : 2;
       if (baths < need) push({ rid: r.id, cat: '每日', ref: 'B25', title: `近 7 天洗澡 ${baths} 次（${isSummer(T) ? '夏季' : ''}應至少 ${need} 次）`, due: T, level: 'warn', act: 'daily' });
@@ -936,7 +943,7 @@ function buildReminders() {
   { const d = new Date(T + 'T00:00:00'); d.setDate(0); const pm = ymd(d).slice(0, 7); const md = (DB.settings.qiMonthDone || {})[pm];
     if (!md && DB.residents.length) { const due = `${T.slice(0, 7)}-05`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+pm.slice(0, 4) - 1911} 年 ${+pm.slice(5)} 月指標監測月統計表待確認`, due, level: status(due), act: 'go:qimonth' }); } }
   // 年度分析（隔年 1 月底前）
-  { const py = String(+T.slice(0, 4) - 1), Y = (DB.quarterly['Y' + py] || {}).pdca || {}; if (DB.residents.length && +T.slice(5, 7) <= 3 && Object.keys(Y).length < 7) { const due = `${T.slice(0, 4)}-01-31`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+py - 1911} 年度指標分析報告尚未完成`, due, level: status(due), act: 'go:qiyear' }); } }
+  { const py = String(+T.slice(0, 4) - 1), Y = (DB.quarterly['Y' + py] || {}).pdca || {}; if (DB.residents.length && +T.slice(5, 7) <= 3 && !QI.every(i => Y[i.no] && Y[i.no].done)) { const due = `${T.slice(0, 4)}-01-31`; push({ rid: null, cat: '機構', ref: 'B12–B19', title: `${+py - 1911} 年度指標分析報告尚未完成`, due, level: status(due), act: 'go:qiyear' }); } }
   // 季分析
   const pq = prevQuarter(quarterOf(T));
   if (!(DB.quarterly[pq] && DB.quarterly[pq].done)) push({ rid: null, cat: '機構', ref: 'B12–B18', title: `${pq.replace('-Q', ' 年第 ')} 季 PDCA 改善報告單尚未完成`, due: addDays(quarterRange(quarterOf(T))[0], 4), level: status(addDays(quarterRange(quarterOf(T))[0], 4)), act: 'go:qipdca' });
@@ -1013,8 +1020,8 @@ function accredEvidence(code) {
   const a = it.auto;
   const meetLine = (k, days) => { const m = lastMeet(k); return m ? (within(m.date, days) ? ['ok', `最近一次 ${roc(m.date)}`] : ['bad', `上次 ${roc(m.date)}，已逾期`]) : ['bad', '系統內尚無紀錄']; };
   if (a === 'qmeet') return meetLine('服務品質會議', 92);
-  if (a === 'idt') { const m = lastMeet('跨專業個案討論'); if (!m) return ['bad', '尚無跨專業個案討論紀錄']; const disc = (m.participants || '').split(/[、,，\s]+/).filter(Boolean).length; return within(m.date, 92) ? [disc >= 3 ? 'ok' : 'warn', `最近 ${roc(m.date)}，參與 ${disc} 人／職類`] : ['bad', `上次 ${roc(m.date)}，已逾 3 個月`]; }
-  if (a === 'group') { const ms = [0, 1, 2].map(i => { const d = new Date(); d.setMonth(d.getMonth() - i); return ymd(d).slice(0, 7); }); const ok = ms.filter(m => DB.meetings.some(x => x.kind === '團體活動' && x.date.startsWith(m))).length; return [ok === 3 ? 'ok' : ok ? 'warn' : 'bad', `近 3 個月有辦理的月份 ${ok}/3`]; }
+  if (a === 'idt') { const m = lastMeet('跨專業個案討論'); if (!m) return ['bad', '尚無跨專業個案討論紀錄']; const disc = (m.disciplines || []).length || (m.participants || '').split(/[、,，\s]+/).filter(Boolean).length; return within(m.date, 92) ? [disc >= 3 ? 'ok' : 'warn', `最近 ${roc(m.date)}，參與 ${disc} 人／職類`] : ['bad', `上次 ${roc(m.date)}，已逾 3 個月`]; }
+  if (a === 'group') { const ms = [0, 1, 2].map(i => { const n = new Date(); return ymd(new Date(n.getFullYear(), n.getMonth() - i, 1)).slice(0, 7); }); const ok = ms.filter(m => DB.meetings.some(x => x.kind === '團體活動' && x.date.startsWith(m))).length; return [ok === 3 ? 'ok' : ok ? 'warn' : 'bad', `近 3 個月有辦理的月份 ${ok}/3`]; }
   if (a === 'b2') {
     let ok72 = 0, okQ = 0, okPlan = 0, okFam = 0;
     res.forEach(r => { const la = latestAssess(r.id);
@@ -1046,19 +1053,19 @@ function accredEvidence(code) {
   if (a === 'tube') { const ng = res.filter(r => r.tubes && r.tubes.ng).length, fo = res.filter(r => r.tubes && r.tubes.foley).length; const tr = res.filter(r => r.tubes && (r.tubes.ng || r.tubes.foley)).filter(r => DB.contacts.some(c => c.rid === r.id && (c.kind === '吞嚥／管路移除訓練' || c.kind === '膀胱訓練'))).length; return [tr ? 'ok' : 'warn', `鼻胃管 ${ng} 人、導尿管 ${fo} 人｜有移除訓練紀錄 ${tr} 人`]; }
   if (a === 'check') { const n = res.filter(r => DB.contacts.some(c => c.rid === r.id && c.kind === '年度健康檢查' && within(c.date, 365))).length; return [pct(n) >= 95 ? 'ok' : 'warn', `一年內完成健康檢查 ${pct(n)}%`]; }
   if (a === 'invasive') return meetLine('侵入性技術稽核', 183);
-  if (a === 'vaccine') { const season = +T.slice(5, 7) >= 9 ? T.slice(0, 4) : String(+T.slice(0, 4) - 1); const flu = res.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && !v.refused && v.date >= season + '-09-01')).length;
+  if (a === 'vaccine') { const season = +T.slice(5, 7) >= 10 ? T.slice(0, 4) : String(+T.slice(0, 4) - 1); const flu = res.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && !v.refused && v.date >= season + '-09-01')).length;
     const old = res.filter(r => age(r.birth) >= 65); const pn = old.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === '肺鏈 PCV' && !v.refused) && DB.vaccines.some(v => v.rid === r.id && v.kind === '肺鏈 PPV23' && !v.refused)).length;
     const cv = res.filter(r => DB.vaccines.some(v => v.rid === r.id && v.kind === 'COVID-19' && !v.refused && within(v.date, 365))).length;
     const st = DB.settings.staff || {}; const sf = st.total ? Math.round((st.flu || 0) / st.total * 100) : null;
     const fp = pct(flu), pp = old.length ? Math.round(pn / old.length * 100) : 0, cp = pct(cv);
     return [fp >= 80 && pp >= 40 && cp >= 40 && (sf === null || sf >= 80) ? 'ok' : 'warn', `住民流感 ${fp}%（≥80）｜肺鏈兩劑 ${pp}%（≥40）｜COVID-19 ${cp}%（≥40）｜員工流感 ${sf === null ? '未填' : sf + '%'}`]; }
-  if (a === 'oob') { const y = addDays(T, -1); const ds = DB.daily.filter(d => d.date === y); const ok = ds.filter(d => (+d.oob || 0) >= 2).length; return [ds.length && ok / ds.length >= .9 ? 'ok' : 'warn', `昨日下床 ≥ 2 次 ${ds.length ? Math.round(ok / ds.length * 100) : 0}%（${ok}/${ds.length}）`]; }
+  if (a === 'oob') { const y = addDays(T, -1); const elig = new Set(res.filter(r => r.mobility !== '臥床不宜移動' && r.status !== '住院中' && r.consciousness !== '意識不清').map(r => r.id)); const ds = DB.daily.filter(d => d.date === y && elig.has(d.rid)); const ok = ds.filter(d => (+d.oob || 0) >= 2).length; return [ds.length && ok / ds.length >= .9 ? 'ok' : 'warn', `昨日下床 ≥ 2 次 ${ds.length ? Math.round(ok / ds.length * 100) : 0}%（${ok}/${ds.length}）`]; }
   if (a === 'bath') { const need = isSummer(T) ? 3 : 2; const ok = res.filter(r => DB.daily.filter(d => d.rid === r.id && d.bath && diffDays(d.date, T) < 7 && d.date <= T).length >= need).length; const bb = res.filter(r => /臥床/.test(r.mobility || '')), y = addDays(T, -1); const tOk = bb.filter(r => { const d = DB.daily.find(x => x.rid === r.id && x.date === y); return d && Object.keys(d.turns || {}).length >= 10; }).length; return [pct(ok) >= 95 && tOk === bb.length ? 'ok' : 'warn', `近 7 天洗澡達 ${need} 次 ${pct(ok)}%｜臥床者昨日翻身紀錄完整 ${tOk}/${bb.length}`]; }
   if (a === 'toilet') { const n = res.filter(r => r.incontinence).length; const p = res.filter(r => r.incontinence && latestPlan(r.id) && (latestPlan(r.id).problems || []).some(x => /如廁|失禁/.test(x.problem))).length; return [n === p ? 'ok' : 'warn', `有失禁之虞 ${n} 人，照顧計畫含定時如廁 ${p} 人`]; }
   if (a === 'diet') return meetLine('膳食滿意度調查', 183);
   if (a === 'ng') { const n = res.filter(r => r.tubes && r.tubes.ng).length; return [n ? 'warn' : 'ok', n ? `管灌 ${n} 人：請確認個別空針、每日天然食材與技術稽核` : '目前無管灌住民（不適用）']; }
   if (a === 'satis') return meetLine('服務滿意度調查', 365);
-  if (a === 'drill' && accVer() === 'elder') { const ms = DB.meetings.filter(m => m.kind === '緊急災害應變演練' && m.date.startsWith(T.slice(0, 4))); const night = ms.some(m => /夜間/.test(m.title || '')), combo = ms.some(m => /複合/.test(m.title || '')); const el = DB.meetings.filter(m => m.kind === '用電設備自主檢查' && within(m.date, 31)).length; return [night && combo && el ? 'ok' : 'warn', `今年演練 ${ms.length} 次（夜間${night ? '✓' : '✗'}、複合型${combo ? '✓' : '✗'}）｜本月用電自主檢查${el ? '✓' : '✗'}`]; }
+  if (a === 'drill' && accVer() === 'elder') { const ms = DB.meetings.filter(m => m.kind === '緊急災害應變演練' && m.date.startsWith(T.slice(0, 4))); const night = ms.some(m => /夜間/.test((m.title || '') + (m.drillTypes || []).join())), combo = ms.some(m => /複合/.test((m.title || '') + (m.drillTypes || []).join())); const el = DB.meetings.filter(m => m.kind === '用電設備自主檢查' && within(m.date, 31)).length; return [night && combo && el ? 'ok' : 'warn', `今年演練 ${ms.length} 次（夜間${night ? '✓' : '✗'}、複合型${combo ? '✓' : '✗'}）｜本月用電自主檢查${el ? '✓' : '✗'}`]; }
   if (a === 'drill') { const y = DB.meetings.filter(m => m.kind === '緊急災害應變演練' && m.date.startsWith(T.slice(0, 4))).length; return [y >= Math.ceil((+T.slice(5, 7)) / 3) ? 'ok' : 'warn', `今年已演練 ${y} 次（每季 1 次、全年 ≥ 4）`]; }
   if (a === 'risk') return meetLine('危機事件半年分析', 184);
   if (a === 'water') { const w = lastMeet('水塔清洗'), q = lastMeet('飲用水大腸桿菌群檢測'), f = lastMeet('飲水機保養'); const ok = w && within(w.date, 184) && q && within(q.date, 92) && f && within(f.date, 31); return [ok ? 'ok' : 'warn', `水塔清洗 ${w ? roc(w.date) : '無'}｜水質檢測 ${q ? roc(q.date) : '無'}｜飲水機保養 ${f ? roc(f.date) : '無'}`]; }
@@ -1085,15 +1092,24 @@ function toast(msg, cls = '') {
 }
 
 /* 彈窗：html 內容 + 按鈕；onSave 回傳 false 代表驗證失敗不關閉 */
-let modalSave = null;
+let modalSave = null, modalDirty = false;
 function openModal(title, html, onSave, opts = {}) {
-  modalSave = onSave;
+  modalSave = onSave; modalDirty = false;
   $('#modal').innerHTML = `<div class="box" role="dialog" aria-label="${esc(title)}"><h2>${esc(title)}</h2><div id="mbody">${html}</div>
     <div class="foot">${opts.extraBtn || ''}<span class="sp"></span><button class="btn" data-act="closeModal">${onSave ? '取消' : '關閉'}</button>${onSave ? `<button class="btn pri" data-act="modalSave">${opts.saveText || '儲存'}</button>` : ''}</div></div>`;
   $('#modal').classList.add('on');
+  enhanceResSelect();
   const first = $('#mbody input:not([type=hidden]):not([type=checkbox]):not([type=radio]), #mbody select, #mbody textarea'); if (first && !opts.noFocus) setTimeout(() => first.focus(), 30);
 }
-function closeModal() { $('#modal').classList.remove('on'); $('#modal').innerHTML = ''; modalSave = null; if (typeof cleanupOrphans === 'function') cleanupOrphans(); }
+function tryCloseModal() { if (modalDirty && modalSave && !confirm('表單有未儲存的內容，確定要關閉嗎？')) return; closeModal(); }
+function enhanceResSelect() {
+  const sel = $('#mbody select[name=rid]'); if (!sel || sel.options.length < 8 || sel.dataset.enh) return; sel.dataset.enh = 1;
+  const inp = document.createElement('input'); inp.placeholder = '輸入床號或姓名快速找住民'; inp.className = 'resfind';
+  sel.parentNode.insertBefore(inp, sel);
+  const all = [...sel.options].map(o => [o.value, o.text]);
+  inp.addEventListener('input', () => { const q = inp.value.trim(); const keep = sel.value; sel.innerHTML = all.filter(([v, t]) => !v || !q || t.includes(q)).map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join(''); const hits = all.filter(([v, t]) => v && q && t.includes(q)); sel.value = hits.length === 1 ? hits[0][0] : (all.some(([v]) => v === keep) && [...sel.options].some(o => o.value === keep) ? keep : sel.options[0].value); sel.dispatchEvent(new Event('change', { bubbles: true })); });
+}
+function closeModal() { modalDirty = false; $('#modal').classList.remove('on'); $('#modal').innerHTML = ''; modalSave = null; if (typeof cleanupOrphans === 'function') cleanupOrphans(); }
 
 /* 表單產生器 */
 function field(f, v) {
@@ -1151,13 +1167,15 @@ function refresh() { const y = window.scrollY; parseHash(); renderNav(); const f
 
 /* 行為分派 */
 const ACT = {
-  closeModal, modalSave() { if (modalSave && modalSave() !== false) { closeModal(); refresh(); } },
+  closeModal: tryCloseModal, modalSave() { if (modalSave && modalSave() !== false) { closeModal(); refresh(); } },
 };
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   const fn = ACT[a.dataset.act]; if (fn) { e.preventDefault(); fn(a, e); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('on')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('on') && !$('#phView')) tryCloseModal(); });
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#mbody')) modalDirty = true; });
+document.addEventListener('change', e => { if (e.target.closest && e.target.closest('#mbody')) modalDirty = true; });
 
 /* 共用小元件 */
 function lvChip(level, cls) { return `<span class="chip ${cls}">${esc(level)}</span>`; }
@@ -1198,7 +1216,7 @@ const ROLE_CATS = {
 const ROLE_SCALES = { '社工人員': ['social','gds'], '營養師': ['mna'], '職能治療師': ['barthel','spmsq'], '物理治療師': ['barthel','morse'], '護理人員': ['barthel','morse','braden','pain','mna','spmsq'] };
 const ROLE_CONTACTS = { '社工人員': ['家屬電訪／會談'], '藥師': ['藥師評估'], '護理人員': ['醫師巡診','年度健康檢查'] };
 function roleFilter(r) {
-  const role = DB.settings.user && DB.settings.user.role; if (!dashRole || !role || role === '機構主任' || role === '行政人員') return true;
+  const role = myRole(); if (!dashRole || !role || role === '機構主任' || role === '行政人員') return true;
   const cats = ROLE_CATS[role] || []; if (!cats.includes(r.cat)) return false;
   if (r.cat === '評估' && ROLE_SCALES[role]) return ROLE_SCALES[role].some(s => r.act.split(':')[2].split(',').includes(s));
   if (r.cat === '訪視聯繫' && ROLE_CONTACTS[role]) return ROLE_CONTACTS[role].some(k => r.act.endsWith(':' + k));
@@ -1237,7 +1255,7 @@ ROUTES.dash = () => {
       <div style="padding:14px 16px 0"><div class="row"><h2 style="margin:0">待辦清單 <span class="muted small">${shown.length} 項${dashBadOnly ? '（只看逾期，再點一次逾期方塊可取消）' : ''}</span></h2><span class="sp"></span>
         ${u && ROLE_CATS[u.role] ? `<label class="small row" style="gap:4px"><input type="checkbox" data-act="toggleRole" ${dashRole ? 'checked' : ''}> 只看${esc(u.role.replace('人員', ''))}的工作</label>` : ''}</div>
       <div class="chips" style="margin-top:10px">${cats.map(c => `<button class="chip ${c === dashCat ? 'on' : ''}" data-act="dashCat" data-c="${esc(c)}">${esc(c)} ${c === '全部' ? rem.length : rem.filter(r => r.cat === c).length}</button>`).join('')}</div></div>
-      <div style="max-height:620px;overflow:auto">${shown.length ? shown.slice(0, 300).map(remRow).join('') : '<div class="empty">沒有待辦事項，做得好！</div>'}</div>
+      <div style="max-height:620px;overflow:auto">${shown.length ? groupRem(shown).slice(0, 300).map(x => x.group ? groupRow(x) : remRow(x)).join('') : '<div class="empty">沒有待辦事項，做得好！</div>'}</div>
     </div>
     <div>
       <div class="card"><div class="row"><h2 style="margin:0">交班摘要</h2><span class="sp"></span><button class="btn sm" data-act="printHandover">列印交班單</button></div>
@@ -1251,6 +1269,19 @@ ROUTES.dash = () => {
     </div>
   </div>`;
 };
+function groupRem(list) {
+  const out = [], g = {};
+  list.forEach(r => {
+    if (r.rid && (r.cat === '每日' || r.cat === '疫苗')) { const k = r.title.replace(/[\d]+(\/12)?\s*次/g, '#').replace(/（.*?）/g, ''); if (!g[k]) { g[k] = { group: true, title: k.replace('#', '不足'), cat: r.cat, ref: r.ref, level: r.level, act: r.act, items: [] }; out.push(g[k]); } g[k].items.push(r); if (r.level === 'bad') g[k].level = 'bad'; }
+    else out.push(r);
+  });
+  return out.map(x => x.group && x.items.length === 1 ? x.items[0] : x);
+}
+function groupRow(x) {
+  return `<div class="rem"><span class="dot ${x.level}"></span><span class="who"><span class="chip">${x.items.length} 人</span></span>
+    <span class="what">${esc(x.title)} ${refChip(x.ref)}<div class="due small">${x.items.slice(0, 6).map(r => esc((resById(r.rid) || {}).bed || '')).join('、')}${x.items.length > 6 ? '…' : ''}</div></span>
+    <button class="btn sm pri" data-act="doRem" data-a="${esc(x.act === 'daily' ? 'daily' : x.act)}">處理</button></div>`;
+}
 function remRow(r) {
   const res = r.rid ? resById(r.rid) : null;
   return `<div class="rem"><span class="dot ${r.level}"></span><span class="who">${res ? `<a href="#/r/${res.id}">${esc(resLabel(res))}</a>` : '<span class="muted">全機構</span>'}</span>
@@ -1316,7 +1347,8 @@ const RES_FIELDS = [
   { key: 'consciousness', label: '意識', type: 'select', options: ['清醒','嗜睡／混亂','意識不清'] },
   { key: 'contactName', label: '主要聯絡人' }, { key: 'contactRel', label: '關係' }, { key: 'contactPhone', label: '聯絡電話' },
   { key: 'doctor', label: '特約／主治醫師' },
-  { key: 'tube_ng', label: '留置鼻胃管', type: 'bool' }, { key: 'tube_foley', label: '留置導尿管', type: 'bool' }, { key: 'tube_trach', label: '氣切', type: 'bool' },
+  { key: 'height', label: '身高 (cm)', type: 'number' },
+  { key: 'tube_ng', label: '留置鼻胃管', type: 'bool' }, { key: 'tube_foley', label: '留置導尿管', type: 'bool' }, { key: 'tube_trach', label: '氣切', type: 'bool' }, { key: 'tube_cysto', label: '膀胱造廔', type: 'bool' }, { key: 'tube_colo', label: '結腸造廔', type: 'bool' },
   { key: 'incontinence', label: '有失禁之虞（需定時如廁）', type: 'bool' },
   { key: 'dnr', label: '已簽署 DNR', type: 'bool' }, { key: 'acp', label: '已完成預立醫療決定 (AD)', type: 'bool' },
   { key: 'noFamily', label: '無家屬（不需家屬電訪）', type: 'bool' }, { key: 'noGuardian', label: '無扶養義務人或法定代理人（長照法 §46）', type: 'bool' },
@@ -1326,11 +1358,11 @@ const RES_FIELDS = [
 ];
 function openRes(id) {
   const r = id ? resById(id) : {};
-  const obj = Object.assign({}, r, r.tubes ? { tube_ng: r.tubes.ng, tube_foley: r.tubes.foley, tube_trach: r.tubes.trach } : {});
+  const obj = Object.assign({}, r, r.tubes ? { tube_ng: r.tubes.ng, tube_foley: r.tubes.foley, tube_trach: r.tubes.trach, tube_cysto: r.tubes.cysto, tube_colo: r.tubes.colo } : {});
   openModal(id ? `編輯住民資料：${r.name}` : '新增住民（入住）', formHTML(RES_FIELDS, obj) + (id ? '' : '<p class="small muted">儲存後系統會自動排入「入住 72 小時評估」「照顧計畫」「1 個月內醫師診察」等待辦。</p>'), () => {
     const o = readForm(RES_FIELDS); if (!o) return false;
     if (DB.residents.some(x => x.id !== id && inHouse(x) && x.bed === o.bed)) { toast(`床號 ${o.bed} 已有在住住民`, 'bad'); return false; }
-    o.tubes = { ng: o.tube_ng, foley: o.tube_foley, trach: o.tube_trach }; delete o.tube_ng; delete o.tube_foley; delete o.tube_trach;
+    o.tubes = { ng: o.tube_ng, foley: o.tube_foley, trach: o.tube_trach, cysto: o.tube_cysto, colo: o.tube_colo }; ['tube_ng', 'tube_foley', 'tube_trach', 'tube_cysto', 'tube_colo'].forEach(k => delete o[k]);
     const saved = save('residents', Object.assign(r, o, { status: r.status || '在住' }));
     toast(id ? '已更新住民資料' : `已新增 ${saved.name}，入住評估已排入待辦`);
     if (!id) setTimeout(() => go(`r/${saved.id}`), 10);
@@ -1341,9 +1373,21 @@ ACT.editRes = el => openRes(el.dataset.id);
 ACT.dischargeRes = el => {
   const r = resById(el.dataset.id);
   const F = [{ key: 'status', label: '結案類別', type: 'select', options: ['退住','往生','轉介其他機構'], req: true }, { key: 'dischargeDate', label: '結案日期', type: 'date', req: true, def: today() }, { key: 'dischargeNote', label: '說明（物品點收、去向）', type: 'textarea', wide: true }];
-  openModal(`結案：${r.name}`, formHTML(F, {}), () => { const o = readForm(F); if (!o) return false; if (o.status === '轉介其他機構') o.status = '退住'; Object.assign(r, o); save('residents', r); toast('已結案'); });
+  openModal(`結案：${r.name}`, formHTML(F, {}), () => { const o = readForm(F); if (!o) return false; if (o.status === '轉介其他機構') o.status = '退住'; Object.assign(r, o); save('residents', r);
+    DB.restraints.filter(x => x.rid === r.id && !x.endDate).forEach(x => { x.endDate = o.dischargeDate; x.endReason = '住民結案'; save('restraints', x); });
+    toast('已結案'); });
 };
-ACT.hospRes = el => { const r = resById(el.dataset.id); r.status = r.status === '住院中' ? '在住' : '住院中'; save('residents', r); toast(r.status === '住院中' ? '已標記住院中，記得登錄非計畫性住院事件' : '已標記返回機構'); if (r.status === '住院中') openEvent(null, r.id, '非計畫性住院'); else refresh(); };
+ACT.hospRes = el => {
+  const r = resById(el.dataset.id);
+  if (r.status !== '住院中') { r.status = '住院中'; save('residents', r); toast('已標記住院中，請登錄住院收案單'); openEvent(null, r.id, '非計畫性住院'); return; }
+  const F = [{ key: 'returnDate', label: '返回機構日期', type: 'date', def: today(), req: true }];
+  openModal(`${r.name} 返回機構`, formHTML(F, {}, 1) + '<p class="small muted">會寫入最近一筆住院事件的「返回機構日期」，保留床人日數依此計算。</p>', () => {
+    const o = readForm(F); if (!o) return false; r.status = '在住'; save('residents', r);
+    const h = DB.events.filter(x => x.rid === r.id && x.type === '非計畫性住院' && !x.returnDate).sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (h) { h.returnDate = o.returnDate; (h.followups = h.followups || []).push({ date: o.returnDate, text: '出院返回機構' }); save('events', h); }
+    toast('已返回機構' + (h ? '，住院事件已記錄返回日期' : ''));
+  });
+};
 
 /* ===== 住民個人頁 ===== */
 ROUTES.after_r = () => hydratePhotos();
@@ -1400,8 +1444,8 @@ ACT.delAssess = el => confirmBox('確定刪除這筆評估？', () => { remove('
 /* 照顧計畫 */
 let planDraft = null;
 function resPlan(r) {
-  const plans = DB.plans.filter(p => p.rid === r.id).sort((a, b) => b.date.localeCompare(a.date));
-  if (!planDraft || planDraft.rid !== r.id) planDraft = plans[0] ? JSON.parse(JSON.stringify(plans[0])) : { rid: r.id, date: today(), problems: [], participants: '', familyDate: '', familyName: '' };
+  const plans = DB.plans.filter(p => p.rid === r.id).sort(planSort);
+  if (!planDraft || planDraft.rid !== r.id) planDraft = plans[0] ? Object.assign(JSON.parse(JSON.stringify(plans[0])), { date: today() }) : { rid: r.id, date: today(), problems: [], participants: '', familyDate: '', familyName: '' };
   const sug = suggestProblems(r, latestAssess(r.id)).filter(s => !planDraft.problems.some(p => p.key === s.key));
   return `<div class="grid g2" style="align-items:start">
   <div>
@@ -1496,9 +1540,9 @@ function openWeight(rid) {
   });
 }
 ACT.newWeightFor = el => openWeight(el.dataset.id);
-function contactFields(kind) {
+function contactFields(kind, cur) {
   return [
-    { key: 'rid', label: '住民', type: 'select', options: activeResidents().filter(inHouse).map(r => [r.id, resLabel(r)]), req: true },
+    { key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === cur).map(r => [r.id, resLabel(r)]), req: true },
     { key: 'kind', label: '類別', type: 'select', options: Object.keys(CONTACT_KINDS), req: true, def: kind },
     { key: 'date', label: '日期', type: 'date', def: today(), req: true }, { key: 'with', label: kind && kind.includes('家屬') ? '聯繫對象' : '執行人員／對象' },
     { key: 'content', label: '內容摘要', type: 'textarea', wide: true, req: true }, { key: 'followup', label: '後續追蹤事項', type: 'textarea', wide: true },
@@ -1512,7 +1556,7 @@ const CONTACT_PHRASES = {
 };
 function openContact(id, rid, kind) {
   const c = id ? DB.contacts.find(x => x.id === id) : { rid, kind };
-  const F = contactFields(c.kind);
+  const F = contactFields(c.kind, c.rid);
   const ph = CONTACT_PHRASES[c.kind] || [];
   openModal(id ? '編輯訪視聯繫紀錄' : '新增訪視聯繫紀錄', formHTML(F, c) + (ph.length ? `<div class="small muted">常用片語（點一下帶入）：</div><div class="chips">${ph.map(p => `<button class="chip" data-act="phrase" data-t="${esc(p)}">${esc(p)}</button>`).join('')}</div>` : ''), () => {
     const o = readForm(F); if (!o) return false; save('contacts', Object.assign(c, o)); toast('已儲存紀錄');
@@ -1521,7 +1565,7 @@ function openContact(id, rid, kind) {
 ACT.phrase = el => { const ta = $('#mbody textarea'); ta.value = (ta.value ? ta.value + '\n' : '') + el.dataset.t; ta.focus(); };
 ACT.newContactFor = el => openContact(null, el.dataset.id);
 ACT.editContact = el => openContact(el.dataset.id);
-ACT.delContact = el => { remove('contacts', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delContact = el => { const id = el.dataset.id, x = DB.contacts.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆訪視聯繫紀錄？刪除後無法復原。')) return; logAccess('刪除訪視聯繫紀錄', x.rid); remove('contacts', id); closeModal(); refresh(); toast('已刪除'); };
 function openVaccine(id, rid) {
   const F = [{ key: 'kind', label: '疫苗', type: 'select', options: ['流感','肺鏈 PCV','肺鏈 PPV23','COVID-19','其他'], req: true }, { key: 'date', label: '日期', type: 'date', def: today(), req: true },
     { key: 'refused', label: '未接種（需註明原因）', type: 'bool' }, { key: 'reason', label: '未接種原因', type: 'select', options: ['對疫苗成分過敏','曾有嚴重不良反應','醫師評估暫緩','本人或家屬拒絕','急性疾病','其他'] }];
@@ -1563,7 +1607,7 @@ ROUTES.assess = (rid, type) => {
     + (sc.extra ? `<div class="card">${formHTML(sc.extra, S.extra, 3)}</div>` : '')}
     ${sc.form ? '' : '<p class="small muted">小技巧：可用鍵盤數字鍵 1、2、3… 依序作答，答完自動跳下一題。</p>'}<label class="f">備註<textarea id="asNote" placeholder="觀察重點、特殊狀況">${esc(S.note)}</textarea></label></div>
   <div class="scorebar"><div><div class="small muted">即時計分</div><div class="big" id="asScore">－</div></div><div id="asLevel"></div><span class="sp"></span>
-    ${queue ? `<span class="small muted">批次：剩 ${queue.length} 位</span>` : ''}${chain && chain.length ? `<span class="small muted">接著：${chain.map(t => SCALES[t].short).join('、')}</span>` : ''}<button class="btn" data-act="go" data-to="r/${r.id}">取消</button><button class="btn pri" data-act="saveAssess">${queue && queue.length ? '儲存並下一位' : chain && chain.length ? '儲存並下一個量表' : '儲存評估'}</button></div>
+    ${queue ? `<span class="small muted">批次：剩 ${queue.length} 位</span>` : ''}${chain && chain.length ? `<span class="small muted">接著：${chain.map(t => SCALES[t].short).join('、')}</span>` : ''}<button class="btn" data-act="cancelAssess" data-to="r/${r.id}">取消</button><button class="btn pri" data-act="saveAssess">${queue && queue.length ? '儲存並下一位' : chain && chain.length ? '儲存並下一個量表' : '儲存評估'}</button></div>
   <div id="asResult"></div>`;
 };
 ROUTES.after_assess = (rid, type) => {
@@ -1576,14 +1620,15 @@ ROUTES.after_assess = (rid, type) => {
     else if (type === 'mna' && S.extra.calf && !S.extra.weight) { const v = +S.extra.calf < 31 ? 0 : 3; const rb = $(`input[name=q5][value="${v}"]`); if (rb) { rb.checked = true; S.answers[5] = v; } }
     S.note = $('#asNote').value; S.date = $('#asDate').value;
     const { score, level } = scoreScale(type, S.answers, S.extra);
-    const done = answeredAll(type, S.answers);
+    const done = answeredAll(type, S.answers, S.extra);
     $('#asScore').textContent = sc.form ? '－' : (done ? score : `${score}…`) + (sc.form ? '' : sc.errorBased ? ' 錯' : ` / ${sc.max}`);
     $('#asLevel').innerHTML = sc.form ? (S.extra.adapt && S.extra.mood && S.extra.family ? lvChip(level[0], level[1]) : '<span class="small muted">請填寫適應、情緒、家庭支持</span>') : done ? lvChip(level[0], level[1]) : `<span class="small muted">尚有 ${sc.items.filter((_, i) => S.answers[i] === undefined).length} 題未答</span>`;
     $$('.q').forEach(q => q.classList.remove('miss'));
   };
   $('#asForm').addEventListener('change', upd); $('#asForm').addEventListener('input', upd); upd();
 };
-ACT.startAssess = () => go(`assess/${$('#asRes').value}/${$('#asType').value}`);
+ACT.startAssess = () => { window.__batch = null; window.__chain = null; assessState = null; go(`assess/${$('#asRes').value}/${$('#asType').value}`); };
+ACT.cancelAssess = el => { window.__batch = null; window.__chain = null; assessState = null; go(el.dataset.to); };
 ACT.copyPrev = () => { const p = assessState.prev; if (!p) return; assessState.answers = Object.assign({}, p.answers); assessState.extra = Object.assign({}, p.extra); refresh(); toast('已帶入上次答案，請確認有變化的項目'); };
 ACT.batchAssess = el => {
   const t = el.dataset.t; const list = (window.__rem || []).filter(r => r.cat === '評估' && r.act.split(':')[2].split(',').includes(t)).map(r => r.rid); window.__chain = null;
@@ -1592,10 +1637,12 @@ ACT.batchAssess = el => {
 };
 ACT.saveAssess = () => {
   const S = assessState, sc = SCALES[S.type], r = resById(S.rid);
-  if (!sc.form && !answeredAll(S.type, S.answers)) { sc.items.forEach((_, i) => { if (S.answers[i] === undefined) $(`.q[data-q="${i}"]`).classList.add('miss'); }); const m = $('.q.miss'); if (m) m.scrollIntoView({ block: 'center' }); toast('還有題目未作答（黃框）', 'bad'); return; }
+  if (!sc.form && !answeredAll(S.type, S.answers, S.extra)) { sc.items.forEach((_, i) => { if (S.answers[i] === undefined) $(`.q[data-q="${i}"]`).classList.add('miss'); }); const m = $('.q.miss'); if (m) m.scrollIntoView({ block: 'center' }); toast('還有題目未作答（黃框）', 'bad'); return; }
   if (sc.form && !readForm(sc.fields, $('#asForm'))) return;
+  if (!S.date) { toast('請填寫評估日期', 'bad'); return; }
   if (S.date > today()) { toast('評估日期不可晚於今天', 'bad'); return; }
-  const { score, level } = scoreScale(S.type, S.answers, S.extra);
+  let { score, level } = scoreScale(S.type, S.answers, S.extra);
+  if (S.type === 'gds' && S.extra && S.extra.na && !sc.items.every((_, i) => S.answers[i] !== undefined)) { score = null; level = ['無法施測：' + S.extra.na, 'warn']; }
   const a = save('assessments', { rid: S.rid, type: S.type, date: S.date, answers: Object.assign({}, S.answers), extra: Object.assign({}, S.extra), score, level: level[0], cls: level[1], note: S.note });
   if (S.type === 'mna' && S.extra.weight && !DB.weights.some(w => w.rid === S.rid && w.date === S.date)) save('weights', { rid: S.rid, date: S.date, kg: +S.extra.weight });
   const n = narrative(S.type, a, r);
@@ -1705,7 +1752,7 @@ function eventTable(list, showRes) {
 }
 ACT.evType = el => { evType = el.dataset.t; refresh(); };
 function openEvent(id, rid, type) {
-  const e = eventDefaults(id ? DB.events.find(x => x.id === id) : { id: uid(), _new: true, rid, type: type || '跌倒', date: today(), time: new Date().toTimeString().slice(0, 5), status: '追蹤中' });
+  const e = eventDefaults(id ? JSON.parse(JSON.stringify(DB.events.find(x => x.id === id))) : { id: uid(), _new: true, rid, type: type || '跌倒', date: today(), time: new Date().toTimeString().slice(0, 5), status: '追蹤中' });
   const draw = (t = e.type) => {
     const def = EVENT_TYPES[t] || { fields: [] };
     const base = [
@@ -1742,10 +1789,10 @@ function openEvent(id, rid, type) {
   });
   bindEv(); hydratePhotos($('#mbody'));
 }
-ACT.newEvent = () => openEvent(null, (activeResidents().filter(inHouse)[0] || {}).id);
+ACT.newEvent = () => openEvent(null, '');
 ACT.newEventFor = el => openEvent(null, el.dataset.id, el.dataset.t);
 ACT.editEvent = el => openEvent(el.dataset.id);
-ACT.delEvent = el => { remove('events', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delEvent = el => { const id = el.dataset.id, x = DB.events.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆事件？刪除後無法復原。')) return; logAccess('刪除事件', x.rid); remove('events', id); closeModal(); refresh(); toast('已刪除'); };
 
 /* ===== 約束管理 ===== */
 ROUTES.restraint = () => {
@@ -1765,10 +1812,11 @@ function restraintTable(list) {
     <td class="nowrap">${x.endDate ? '' : `<button class="btn sm pri" data-act="rsCheck" data-id="${x.id}">監測</button><button class="btn sm" data-act="rsEnd" data-id="${x.id}">解除</button>`}<button class="btn sm" data-act="rsEdit" data-id="${x.id}">開啟</button><button class="btn sm" data-act="printRestraint" data-id="${x.id}">同意書</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">無</td></tr>'}</table></div></div>`;
 }
 const RS_FIELDS = () => [
-  { key: 'rid', label: '住民', type: 'select', options: activeResidents().filter(inHouse).map(r => [r.id, resLabel(r)]), req: true },
+  { key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === (window.__rsRid || '')).map(r => [r.id, resLabel(r)]), req: true },
   { key: 'startDate', label: '開始日期', type: 'date', def: today(), req: true },
   { key: 'judge', label: '判斷依據', type: 'select', options: ['醫師診斷','護理人員專業判斷'], req: true }, { key: 'assessor', label: '評估人員', req: true, def: DB.settings.user ? DB.settings.user.name : '' },
-  { key: 'reasons', label: '約束目的（僅限以下，其餘皆屬不當約束）', type: 'checks', options: ['預防跌倒','預防自拔管路','行為紊亂','因治療需要'], req: true, wide: true },
+  { key: 'reasons', label: '約束目的（評鑑僅認可前四項，其餘屬不當約束）', type: 'checks', options: ['預防跌倒','預防自拔管路','行為紊亂','因治療需要','預防自傷','其他'], req: true, wide: true },
+  { key: 'hours', label: '每日約束持續時間', type: 'select', options: ['≤4 小時','>4 至 ≤8 小時','>8 至 ≤16 小時','>16 至 ≤24 小時'], req: true }, { key: 'form2', label: '同時使用 2 種以上約束', type: 'bool' },
   { key: 'alternatives', label: '約束前已嘗試的替代措施', type: 'checks', options: ['增加巡視與陪伴','調整床高與床邊防護墊','離床警示','管路固定／遮蔽／改變管路位置','轉移注意力與活動安排','處理疼痛、口渴、如廁等需求','調整環境（光線、噪音）','醫師檢視藥物','家屬陪伴'], req: true, wide: true },
   { key: 'assessNote', label: '個別化評估說明', type: 'textarea', wide: true, req: true },
   { key: 'form', label: '約束型態', type: 'select', options: ['手部約束（手套）','手腕約束帶','約束背心','腰部約束帶','輪椅安全帶','其他'], req: true },
@@ -1778,7 +1826,7 @@ const RS_FIELDS = () => [
   { key: 'consentDate', label: '同意書簽署日期（自簽訂日起 3 個月內有效）', type: 'date', def: today(), req: true },
 ];
 function openRestraint(id, rid) {
-  const x = id ? DB.restraints.find(y => y.id === id) : { rid, checks: [] };
+  const x = id ? DB.restraints.find(y => y.id === id) : { rid, checks: [] }; window.__rsRid = x.rid;
   const F = RS_FIELDS();
   openModal(id ? '約束評估紀錄' : '約束評估與同意', formHTML(F, x) + (x.checks && x.checks.length ? `<h3>監測紀錄（${x.checks.length}）</h3><div class="small" style="max-height:160px;overflow:auto">${x.checks.slice().reverse().map(c => `● ${roc(c.date)} ${c.time}　皮膚${c.skin}／循環${c.circ}　${c.release ? '已鬆綁' : ''} ${esc(c.note || '')}　<span class="muted">${esc(c.by)}</span>`).join('<br>')}</div>` : ''), () => {
     const o = readForm(F); if (!o) return false;
@@ -1790,11 +1838,11 @@ function openRestraint(id, rid) {
 function activeResident(rid) { return activeRestraint(rid); }
 function openRestraintCheck(id) {
   const x = DB.restraints.find(y => y.id === id); if (!x) return;
-  const F = [{ key: 'time', label: '時間', type: 'time', def: new Date().toTimeString().slice(0, 5), req: true }, { key: 'skin', label: '皮膚', type: 'select', options: ['完整','發紅','破損'], def: '完整', blank: false }, { key: 'circ', label: '末梢循環', type: 'select', options: ['正常','冰冷／發紺','腫脹'], def: '正常', blank: false },
+  const F = [{ key: 'date', label: '日期', type: 'date', def: today(), req: true }, { key: 'time', label: '時間', type: 'time', def: new Date().toTimeString().slice(0, 5), req: true }, { key: 'skin', label: '皮膚', type: 'select', options: ['完整','發紅','破損'], def: '完整', blank: false }, { key: 'circ', label: '末梢循環', type: 'select', options: ['正常','冰冷／發紺','腫脹'], def: '正常', blank: false },
     { key: 'release', label: '已鬆綁活動並滿足需求（進食、如廁、翻身）', type: 'bool', def: true }, { key: 'canStop', label: '評估可解除約束', type: 'select', options: ['否，仍需約束','是，今日解除'], def: '否，仍需約束', blank: false }, { key: 'note', label: '備註', wide: true }];
   openModal(`約束監測：${resLabel(resById(x.rid))}`, formHTML(F, {}), () => {
-    const o = readForm(F); if (!o) return false; o.date = today(); o.by = currentUser();
-    x.checks = x.checks || []; x.checks.push(o); if (o.canStop.startsWith('是')) { x.endDate = today(); x.endReason = '監測評估可解除'; }
+    const o = readForm(F); if (!o) return false; if (o.date > today()) { toast('日期不可晚於今天', 'bad'); return false; } o.by = currentUser();
+    x.checks = x.checks || []; x.checks.push(o); if (o.canStop.startsWith('是')) { x.endDate = o.date; x.endReason = '監測評估可解除'; }
     save('restraints', x); toast(x.endDate ? '已解除約束' : '已記錄監測');
   });
 }
@@ -1821,6 +1869,8 @@ function openMeeting(id, kind) {
   const F = [{ key: 'kind', label: '類別', type: 'select', options: MEETING_KINDS, req: true }, { key: 'date', label: '日期', type: 'date', req: true },
     { key: 'title', label: '主題', req: true, wide: true }, { key: 'participants', label: isGroup ? '參加成員' : '出席人員（職類）', wide: true, ph: isGroup ? '' : '主任、護理長、社工、職能治療師、營養師…' },
     ...(isGroup ? [{ key: 'count', label: '參加人數', type: 'number' }] : []),
+    ...(m.kind === '緊急災害應變演練' ? [{ key: 'drillTypes', label: '演練類型（評鑑 C11：每年至少複合型、夜間各 1 次）', type: 'checks', options: ['夜間演練', '複合型災害', '桌上模擬', '火災', '地震', '風災水災', '停電停水'], wide: true }] : []),
+    ...(m.kind === '跨專業個案討論' ? [{ key: 'disciplines', label: '參與職類（評鑑 B5：至少 3 種）', type: 'checks', options: ['護理', '社工', '職能治療', '物理治療', '營養', '藥師', '醫師', '照服員', '語言治療'], wide: true }] : []),
     ...(m.kind === '跨專業個案討論' ? [{ key: 'rids', label: '討論個案', type: 'checks', options: activeResidents().filter(inHouse).map(r => resLabel(r)), wide: true }] : []),
     { key: 'content', label: isGroup ? '活動內容與過程' : '討論內容', type: 'textarea', wide: true },
     { key: 'decisions', label: isGroup ? '量與質之評值成果' : '決議事項', type: 'textarea', wide: true },
@@ -1832,7 +1882,7 @@ function openMeeting(id, kind) {
 }
 ACT.newMeeting = el => openMeeting(null, el.dataset.k);
 ACT.editMeeting = el => openMeeting(el.dataset.id);
-ACT.delMeeting = el => { remove('meetings', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delMeeting = el => { const id = el.dataset.id, x = DB.meetings.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆會議／活動紀錄？刪除後無法復原。')) return; logAccess('刪除會議／活動紀錄', x.rid); remove('meetings', id); closeModal(); refresh(); toast('已刪除'); };
 
 /* ---- pages_qa.js ---- */
 /* ===== 品質指標 ===== */
@@ -1840,46 +1890,44 @@ function recentQuarters(n) { const out = []; let q = quarterOf(today()); for (le
 ROUTES.quality = (q) => {
   q = q || quarterOf(today());
   const [f, t] = quarterRange(q);
-  const months = [0, 1, 2].map(i => { const d = new Date(f + 'T00:00:00'); d.setMonth(d.getMonth() + i); return ymd(d).slice(0, 7); });
-  const ms = months.map(m => qualityStats(...monthRange(m)));
-  const qs = qualityStats(f, t);
-  const hist = recentQuarters(4).reverse().map(x => [x, qualityStats(...quarterRange(x))]);
-  const Q = DB.quarterly[q] || { analysis: {} };
-  const fmt = (row, a, b) => { const inner = row.rate === null ? row.n : `${row.n}<div class="small muted">${row.rate.toFixed(2)} ${row.unit}</div>`; return row.n ? `<button class="qcell" data-act="qDrill" data-k="${esc(row.key)}" data-f="${a}" data-t="${b}" title="點開看是哪幾件">${inner}</button>` : inner; };
-  return `${qiTabs('quality')}<div class="hd"><div><h1>品質指標</h1><p class="sub">由事件登錄、約束、體重、評估資料自動計算。人日數 = 每位住民在機構的天數加總。每季完成分析檢討即符合 B12–B18「定期（每季）分析」。</p></div><span class="sp"></span>
+  const months = [0, 1, 2].map(i => { const d0 = new Date(f + 'T00:00:00'); return ymd(new Date(d0.getFullYear(), d0.getMonth() + i, 1)).slice(0, 7); });
+  const hist = recentQuarters(4).reverse();
+  const P = ((DB.quarterly[q] || {}).pdca) || {};
+  const doneN = QI.filter(i => P[i.no] && P[i.no].done).length;
+  const rows = QI.map(ind => {
+    const mm = months.map(m => m <= today().slice(0, 7) ? qiCompute(ind, ...monthRange(m)) : null), qq = qiCompute(ind, f, t), hh = hist.map(x => qiCompute(ind, ...quarterRange(x)).M[0].v), mx = Math.max(...hh, +qq.M[0].thr || 0, 0.0001);
+    const cell = (c, a, b) => { if (!c) return '<span class="muted small">－</span>'; const m = c.M[0], n = c.D[ind.main] || 0; const inner = `${n}<div class="small" style="color:${m.ok === false ? 'var(--bad)' : 'var(--muted)'}">${fmtV(m)}</div>`; return n ? `<button class="qcell" data-act="qDrill" data-k="${ind.no}" data-f="${a}" data-t="${b}" title="點開看是哪幾件">${inner}</button>` : inner; };
+    return `<tr><td><b>${ind.no}. ${esc(ind.name.replace('指標監測', ''))}</b><div class="small muted">${esc(qq.M[0].name)}｜閾值 ${thrText(qq.M[0])}</div></td>${mm.map((c, k) => `<td>${cell(c, ...monthRange(months[k]))}</td>`).join('')}<td>${cell(qq, f, t)}</td>
+      <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${hh.map((v, k) => `<button data-act="qGo" data-q="${hist[k]}" title="${hist[k]}：${v.toFixed(2)}（點一下切換）" style="width:18px;padding:0;border:0;cursor:pointer;height:${Math.max(3, v / mx * 28)}px;background:${hist[k] === q ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></button>`).join('')}</div></td>
+      <td>${P[ind.no] && P[ind.no].done ? '<span class="chip ok">PDCA 完成</span>' : '<span class="chip warn">待填</span>'}</td></tr>`;
+  }).join('');
+  const rd = residentDays(f, t);
+  return `${qiTabs('quality')}<div class="hd"><div><h1>品質指標</h1><p class="sub">與月統計表、PDCA 使用同一套公式（人日數已扣除住院保留床）。數字可以點開看是哪幾件；右邊趨勢長條點一下切換季度。</p></div><span class="sp"></span>
     <select id="qSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${recentQuarters(8).map(x => `<option value="${x}"${x === q ? ' selected' : ''}>${x.replace('-Q', ' 年第 ')} 季${x === quarterOf(today()) ? '（本季）' : ''}</option>`).join('')}</select></div>
-  <p class="small muted" style="margin-top:-6px">數字可以點開看是哪幾件；右邊趨勢長條點一下切換季度。</p>
-  <div class="grid g4"><div class="kpi"><div class="n">${qs.rd}</div><div class="l">本季住民人日數</div></div><div class="kpi"><div class="n">${qs.census}</div><div class="l">平均每日在住</div></div>
-    <div class="kpi ${Q.done ? 'ok' : 'warn'}"><div class="n">${Q.done ? '已完成' : '未完成'}</div><div class="l">本季分析檢討</div></div><div class="kpi"><div class="n">${DB.events.filter(e => e.date >= f && e.date <= t).length}</div><div class="l">本季事件總數</div></div></div>
-  <div class="card" style="margin-top:16px;padding:0"><div class="tw"><table class="t"><tr><th>指標</th>${months.map(m => `<th>${+m.slice(5)} 月</th>`).join('')}<th>本季</th><th>近 4 季趨勢</th></tr>
-  ${qs.rows.map((row, i) => { const h = hist.map(([, s]) => s.rows[i].rate ?? s.rows[i].n); const mx = Math.max(...h, 0.0001);
-    return `<tr><td>${esc(row.key)} ${refChip(row.ref)}</td>${ms.map((s, mi) => `<td>${fmt(s.rows[i], ...monthRange(months[mi]))}</td>`).join('')}<td><b>${fmt(row, f, t)}</b></td>
-    <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${h.map((v, j) => `<button data-act="qGo" data-q="${hist[j][0]}" title="${hist[j][0]}：${typeof v === 'number' ? v.toFixed(2) : v}（點一下切換到這一季）" style="width:18px;padding:0;border:0;cursor:pointer;height:${Math.max(3, v / mx * 28)}px;background:${hist[j][0] === q ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></button>`).join('')}</div></td></tr>`; }).join('')}</table></div></div>
-  <div class="banner info">每季的正式分析請到「<a href="#/qipdca">季 PDCA</a>」填寫 PDCA 改善報告單，每月報表在「<a href="#/qimonth">月統計表</a>」。</div><h2>本季分析與改善方案（簡式）</h2><p class="sub">逐項填寫後按「完成本季分析」。建議於品質會議中討論並記錄於「會議與活動」。</p>
-  <div id="qForm">${qs.rows.filter(r => r.rate !== null || r.key.startsWith('管路成功')).map(row => { const a = (Q.analysis || {})[row.key] || {}; const evs = DB.events.filter(e => row.key.startsWith(e.type) && e.date >= f && e.date <= t);
-    return `<div class="card"><div class="row"><b>${esc(row.key)}</b>${refChip(row.ref)}<span class="sp"></span><span class="chip">${row.n} 件</span></div>
-    ${evs.length ? `<div class="small muted" style="margin:6px 0">${evs.map(e => `${roc(e.date)} ${esc(resById(e.rid) ? resById(e.rid).name : '')}：${esc((e.cause || '未分析').slice(0, 30))}`).join('；')}</div>` : ''}
-    <div class="grid g2"><label class="f">分析（趨勢、共同原因）<textarea data-qk="${esc(row.key)}" data-qf="a">${esc(a.a || '')}</textarea></label><label class="f">檢討與改善方案<textarea data-qk="${esc(row.key)}" data-qf="b">${esc(a.b || '')}</textarea></label></div></div>`; }).join('')}</div>
-  <div class="row"><button class="btn" data-act="qSave" data-q="${q}">暫存</button><button class="btn pri" data-act="qDone" data-q="${q}">完成本季分析</button><button class="btn" data-act="printQuarter" data-q="${q}">列印季報告</button></div>`;
+  <div class="grid g4"><div class="kpi"><div class="n">${rd}</div><div class="l">本季住民人日數</div></div><div class="kpi"><div class="n">${DB.events.filter(e => e.date >= f && e.date <= t).length}</div><div class="l">本季事件總數</div></div>
+    <button class="kpi ${doneN === QI.length ? 'ok' : 'warn'}" data-act="go" data-to="qipdca"><div class="n">${doneN}/${QI.length}</div><div class="l">PDCA 完成 ›</div></button>
+    <button class="kpi" data-act="go" data-to="qimonth"><div class="n">${Object.keys(DB.settings.qiMonthDone || {}).filter(m => months.includes(m)).length}/3</div><div class="l">本季月統計表已確認 ›</div></button></div>
+  <div class="card" style="margin-top:16px;padding:0"><div class="tw"><table class="t"><tr><th>指標（主要監測項目）</th>${months.map(m => `<th>${+m.slice(5)} 月</th>`).join('')}<th>本季</th><th>近 4 季</th><th>本季 PDCA</th></tr>${rows}</table></div></div>
+  <div class="row"><button class="btn" data-act="qpPrintAll" data-q="${q}">列印／Word：本季全部 PDCA</button><button class="btn" data-act="qmPrint" data-m="${months.filter(m => m <= today().slice(0, 7)).pop()}">列印／Word：最近一個月月統計表</button></div>`;
 };
+ROUTES.after_quality = () => { $('#qSel').addEventListener('change', e => go('quality/' + e.target.value)); };
 const QKEY_TYPE = { '跌倒': ['跌倒'], '壓力性損傷（機構內新發生）': ['壓力性損傷'], '感染': ['感染'], '非計畫性住院': ['非計畫性住院'], '非計畫性體重改變': ['非計畫性體重改變'], '管路滑脫／自拔': ['管路滑脫／自拔'], '管路成功移除': ['管路移除'] };
 ACT.qGo = el => go('quality/' + el.dataset.q);
 ACT.qDrill = el => {
-  const k = el.dataset.k, f = el.dataset.f, t = el.dataset.t; let html = '';
-  if (QKEY_TYPE[k]) {
-    const list = DB.events.filter(e => QKEY_TYPE[k].includes(e.type) && e.date >= f && e.date <= t).sort((a, b) => a.date.localeCompare(b.date));
-    html = `<table class="t"><tr><th>日期</th><th>住民</th><th>經過</th><th>分析</th><th></th></tr>${list.map(e => `<tr><td class="nowrap">${roc(e.date)}</td><td class="nowrap">${esc(resLabel(resById(e.rid)))}</td><td class="small">${esc((e.desc || '').slice(0, 60))}</td><td>${e.cause && e.action ? '<span class="chip ok">已分析</span>' : '<span class="chip bad">待分析</span>'}</td><td><button class="btn sm" data-act="qOpenEv" data-id="${e.id}">開啟</button></td></tr>`).join('')}</table>`;
-  } else if (k === '約束') {
+  const ind = QI.find(i => i.no === +el.dataset.k), f = el.dataset.f, t = el.dataset.t; let html = '';
+  if (ind.type) {
+    const list = qiCompute(ind, f, t).ev.sort((a, b) => a.date.localeCompare(b.date));
+    html = `<table class="t"><tr><th>日期</th><th>住民</th><th>經過</th><th>分析</th><th></th></tr>${list.map(e => `<tr><td class="nowrap">${roc(e.date)}</td><td class="nowrap">${esc(resLabel(resById(e.rid)))}</td><td class="small">${esc((e.desc || '').slice(0, 60))}</td><td>${e.cause && (e.improve || e.action) ? '<span class="chip ok">已分析</span>' : '<span class="chip bad">待分析</span>'}</td><td><button class="btn sm" data-act="qOpenEv" data-id="${e.id}">開啟</button></td></tr>`).join('')}</table>`;
+  } else if (ind.no === 3) {
     const list = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f));
     html = `<table class="t"><tr><th>住民</th><th>期間</th><th>目的</th></tr>${list.map(x => `<tr><td>${esc(resLabel(resById(x.rid)))}</td><td>${roc(x.startDate)}～${x.endDate ? roc(x.endDate) : '持續中'}</td><td>${esc((x.reasons || []).join('、'))}</td></tr>`).join('')}</table>`;
-  } else if (/疼痛/.test(k)) {
-    const list = DB.daily.filter(d => d.date >= f && d.date <= t && +d.pain >= 4).sort((a, b) => a.date.localeCompare(b.date));
+  } else if (ind.no === 8) {
+    const list = DB.daily.filter(d => d.date >= f && d.date <= t && +d.pain > 0).sort((a, b) => a.date.localeCompare(b.date));
     html = `<table class="t"><tr><th>日期</th><th>住民</th><th>疼痛分數</th></tr>${list.map(d => `<tr><td>${roc(d.date)}</td><td>${esc(resLabel(resById(d.rid)))}</td><td>${d.pain}</td></tr>`).join('')}</table>`;
-  } else html = '<p class="small muted">此指標由評估資料計算，請到住民個人頁查看評估紀錄。</p>';
-  openModal(`${k}｜${roc(f)}～${roc(t)}`, html, null);
+  }
+  openModal(`${ind.name}｜${roc(f)}～${roc(t)}`, html || '<p class="muted">無明細</p>', null);
 };
 ACT.qOpenEv = el => { closeModal(); openEvent(el.dataset.id); };
-ROUTES.after_quality = () => { $('#qSel').addEventListener('change', e => go('quality/' + e.target.value)); };
 function readQ(q) { const Q = DB.quarterly[q] || { analysis: {} }; Q.analysis = Q.analysis || {}; $$('#qForm textarea').forEach(t => { (Q.analysis[t.dataset.qk] = Q.analysis[t.dataset.qk] || {})[t.dataset.qf] = t.value; }); return Q; }
 ACT.qSave = el => { setKV('quarterly', el.dataset.q, readQ(el.dataset.q)); toast('已暫存'); };
 ACT.qDone = el => { const Q = readQ(el.dataset.q); const empty = Object.values(Q.analysis).filter(x => !x.a && !x.b).length; if (empty > 3) { toast(`還有 ${empty} 項未填寫分析`, 'bad'); return; } Q.done = true; Q.doneDate = today(); Q.by = currentUser(); setKV('quarterly', el.dataset.q, Q); toast('本季分析已完成'); refresh(); };
@@ -1899,11 +1947,28 @@ ROUTES.accred = () => {
   <div class="row" style="margin:14px 0"><div class="chips" style="margin:0">${SET.map(c => `<button class="chip ${c.cat === accOpen ? 'on' : ''}" data-act="accCat" data-c="${c.cat}">${c.cat}. ${c.name}</button>`).join('')}</div><span class="sp"></span><label class="small row" style="gap:4px"><input type="checkbox" data-act="accCore" ${accOnlyCore ? 'checked' : ''}> 只看${elder ? '一級必要項目' : '核心指標'}</label></div>
   ${all.filter(x => x.cat === accOpen && (!accOnlyCore || x.core)).map(x => { const ev = accredEvidence(x.code); const s = A[x.code] || {};
     return `<details class="acc-item" ${ev && ev[0] === 'bad' ? 'open' : ''}><summary><span class="code">${x.code}</span><span style="flex:1">${esc(x.title)} ${x.core ? `<span class="chip bad">${elder ? '一級必要' : '核心'}</span>` : ''}</span>${ev ? `<span class="chip ${ev[0]}">${ev[0] === 'ok' ? '佐證完整' : ev[0] === 'bad' ? '需補強' : ev[0] === 'warn' ? '注意' : '資訊'}</span>` : ''}${s.r ? `<span class="chip pri">自評 ${s.r}</span>` : ''}</summary>
-    <div class="body"><p>${esc(x.desc)}</p>${ev ? `<div class="banner ${ev[0] === 'ok' ? 'info' : ev[0]}" style="margin:6px 0">系統佐證：${esc(ev[1])}</div>` : '<p class="small muted">此項需以文件、現場察看佐證，請於備註記錄準備狀況與文件位置。</p>'}
+    <div class="body"><p>${esc(x.desc)}</p>${ev ? `<div class="banner ${ev[0] === 'ok' ? 'info' : ev[0]}" style="margin:6px 0">系統佐證：${esc(ev[1])}${ACC_MISS[x.auto] ? ` <button class="btn sm" data-act="accMiss" data-a="${x.auto}">看未達標住民</button>` : ''}</div>` : '<p class="small muted">此項需以文件、現場察看佐證，請於備註記錄準備狀況與文件位置。</p>'}
     <div class="row"><span class="small muted">自評</span><div class="rating">${['A', 'B', 'C', 'D', 'E'].map(g => `<button data-act="accRate" data-c="${x.code}" data-g="${g}" class="${s.r === g ? 'on' : ''}">${g}</button>`).join('')}</div></div>
     <label class="f" style="margin-top:8px">準備狀況／佐證文件位置<textarea data-accnote="${x.code}" placeholder="例：工作手冊第 3 章；114 年品質會議紀錄 4 份">${esc(s.note || '')}</textarea></label></div></details>`; }).join('')}`;
 };
 ROUTES.after_accred = () => { $$('[data-accnote]').forEach(t => t.addEventListener('change', () => { const c = t.dataset.accnote; setKV('accred', c, Object.assign({}, DB.accred[c], { note: t.value })); toast('已儲存備註'); })); };
+const ACC_MISS = {
+  family: { title: '本季尚未家屬電訪／會談', test: r => r.noFamily || DB.contacts.some(c => c.rid === r.id && c.kind === '家屬電訪／會談' && diffDays(c.date, today()) <= 92), batch: '家屬電訪／會談' },
+  doctor: { title: '期限內尚未醫師巡診', test: r => DB.contacts.some(c => c.rid === r.id && c.kind === '醫師巡診' && diffDays(c.date, today()) <= facType().doctor + 1), batch: '醫師巡診' },
+  pharm: { title: '近 3 個月尚未藥師評估', test: r => DB.contacts.some(c => c.rid === r.id && c.kind === '藥師評估' && diffDays(c.date, today()) <= 92), batch: '藥師評估' },
+  check: { title: '一年內尚未健康檢查', test: r => DB.contacts.some(c => c.rid === r.id && c.kind === '年度健康檢查' && diffDays(c.date, today()) <= 365), batch: '年度健康檢查' },
+  weight: { title: '近 1 個月尚未量體重', test: r => { const w = weightsOf(r.id).pop(); return w && diffDays(w.date, today()) <= 31; }, batch: '體重' },
+  b2: { title: '期限內評估不齊全', test: r => { const la = latestAssess(r.id); return CORE_SCALES.every(t => la[t] && diffDays(la[t].date, today()) <= scaleCycle(t) + 2); } },
+  vaccine: { title: '本季尚未接種流感或未註明原因', test: r => DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && diffDays(v.date, today()) < 300), batch: '流感疫苗' },
+  pain: { title: '尚未做疼痛評估', test: r => !!latestAssess(r.id).pain },
+};
+ACT.accMiss = el => {
+  const M = ACC_MISS[el.dataset.a], list = activeResidents().filter(inHouse).filter(r => !M.test(r));
+  openModal(`${M.title}（${list.length} 人）`, list.length ? `<table class="t">${list.map(r => `<tr><td>${esc(resLabel(r))}</td><td class="right"><a href="#/r/${r.id}" data-act="closeModal">開啟住民</a></td></tr>`).join('')}</table>` : '<p>全部達標。</p>', null,
+    { extraBtn: M.batch && list.length ? `<button class="btn pri" data-act="accBatch" data-b="${esc(M.batch)}">前往批次登錄</button>` : list.length ? '<button class="btn pri" data-act="accMatrix">開啟評估進度總表</button>' : '' });
+};
+ACT.accBatch = el => { batchType = el.dataset.b; closeModal(); go('batch'); };
+ACT.accMatrix = () => { closeModal(); go('matrix'); };
 ACT.accCat = el => { accOpen = el.dataset.c; refresh(); };
 ACT.accCore = () => { accOnlyCore = !accOnlyCore; refresh(); };
 ACT.accRate = el => { const c = el.dataset.c; const cur = DB.accred[c] || {}; setKV('accred', c, Object.assign({}, cur, { r: cur.r === el.dataset.g ? '' : el.dataset.g })); refresh(); };
@@ -1964,7 +2029,7 @@ ACT.saveUser = el => { const o = readForm([{ key: 'name', label: '姓名', req: 
 ACT.saveStaff = el => { setKV('settings', 'staff', readForm([{ key: 'total', type: 'number' }, { key: 'flu', type: 'number' }, { key: 'covid', type: 'number' }], el.closest('.card'))); toast('已儲存'); };
 ACT.setPw = async () => { const a = $('#pw1').value, b = $('#pw2').value; if (a.length < 6) { toast('密碼至少 6 碼', 'bad'); return; } if (a !== b) { toast('兩次輸入不一致', 'bad'); return; } await Store.setPassword(a); toast('已加密，下次開啟需輸入密碼'); refresh(); };
 ACT.clearPw = () => confirmBox('移除密碼後資料將以未加密方式存放，確定？', async () => { await Store.setPassword(''); toast('已移除密碼'); refresh(); });
-ACT.lockNow = () => { location.reload(); };
+ACT.lockNow = async () => { await Store.flush(); location.reload(); };
 ACT.theme = el => { const t = el.dataset.t; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; try { localStorage.setItem('ltc-theme', t); } catch (e) {} toast('已切換外觀'); };
 ACT.exportData = async () => {
   const withPh = $('#bkPhotos') ? $('#bkPhotos').checked : true;
@@ -2209,15 +2274,16 @@ document.addEventListener('change', async e => {
 ACT.viewPhoto = async el => {
   const p = DB.photos.find(x => x.id === el.dataset.id); if (!p) return;
   const d = await getPhoto(p.id);
-  const back = $('#modal').classList.contains('on') ? $('#modal').innerHTML : null, backSave = modalSave;
-  const restore = () => { if (back) { $('#modal').innerHTML = back; modalSave = backSave; const s = $(`.photos[data-owner="${p.owner}"]`); if (s) { s.outerHTML = photoStrip(p.owner); hydratePhotos(); } } else closeModal(); };
-  $('#modal').classList.add('on');
-  $('#modal').innerHTML = `<div class="box"><h2>照片｜${roc(p.date)}</h2><img src="${d}" style="max-width:100%;border-radius:8px" alt="">
+  const ov = document.createElement('div'); ov.id = 'phView'; ov.className = 'phview';
+  ov.innerHTML = `<div class="box"><h2 style="margin-top:0">照片｜${roc(p.date)}</h2><img src="${d}" style="max-width:100%;border-radius:8px" alt="">
     <label class="f">說明<input id="phCap" value="${esc(p.caption || '')}" placeholder="例：薦骨傷口 2×3 cm、中秋活動合照"></label>
     <div class="small muted">${p.w}×${p.h}・約 ${Math.round(p.size / 1024)} KB・${esc(p.by || '')}</div>
     <div class="foot"><button class="btn danger" id="phDel">刪除照片</button><span class="sp"></span><button class="btn pri" id="phOk">完成</button></div></div>`;
-  $('#phOk').onclick = () => { p.caption = $('#phCap').value; Store.mark('photos'); restore(); };
-  $('#phDel').onclick = async () => { await delPhoto(p.id); toast('已刪除照片'); restore(); if (!back) refresh(); };
+  document.body.appendChild(ov);
+  const done = () => { ov.remove(); const s = $(`.photos[data-owner="${p.owner}"]`); if (s) { s.outerHTML = photoStrip(p.owner); hydratePhotos(); } };
+  ov.querySelector('#phOk').onclick = () => { p.caption = ov.querySelector('#phCap').value; Store.mark('photos'); done(); };
+  ov.querySelector('#phDel').onclick = async () => { if (!confirm('確定刪除這張照片？')) return; await delPhoto(p.id); toast('已刪除照片'); done(); };
+  ov.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); done(); } });
 };
 async function photosPrintHTML(owner, title = '照片') {
   const ps = photosOf(owner); if (!ps.length) return '';
@@ -2312,7 +2378,7 @@ async function restoreBackup(txt, folderPhotos) {
   if (f.enc) {
     const pass = await promptPassword('這份備份有加密，請輸入當時設定的密碼'); if (pass === null) return;
     salt = unb64(f.salt); key = await Store.deriveKey(pass, salt);
-    try { const save = Store.key; Store.key = key; data = JSON.parse(await Store.dec(f.data)); Store.key = save; } catch (e) { toast('密碼錯誤，無法解開備份', 'bad'); return; }
+    const keep0 = Store.key; try { Store.key = key; data = JSON.parse(await Store.dec(f.data)); } catch (e) { toast('密碼錯誤，無法解開備份', 'bad'); return; } finally { Store.key = keep0; }
   }
   if (Cloud.on && !Cloud.isAdmin()) { toast('雲端版只有主任可以還原備份', 'bad'); return; }
   confirmBox(`將以備份（${f.__at ? new Date(f.__at).toLocaleString() : ''}，住民 ${(data.residents || []).length} 位、照片 ${(data.photos || []).length} 張）<b>覆蓋</b>這台電腦目前的資料，確定？`, async () => {
@@ -2323,7 +2389,7 @@ async function restoreBackup(txt, folderPhotos) {
     for (const p of DB.photos) {
       let d = emb[p.id];
       const fp = folderPhotos && folderPhotos[p.id];
-      if (!d && fp) d = fp.data || (fileKey ? await (async () => { const s = Store.key; Store.key = fileKey; const r = await Store.dec(fp.enc); Store.key = s; return r; })() : null);
+      if (!d && fp) d = fp.data || (fileKey ? await (async () => { const s = Store.key; try { Store.key = fileKey; return await Store.dec(fp.enc); } catch (e) { return null; } finally { Store.key = s; } })() : null);
       if (d) { const e2 = await Store.enc(d); await Store.rawSet('ph:' + p.id, e2); if (Cloud.on) Cloud.uploadPhoto(p.id, e2); }
     }
     await Store.flush(); if (Folder.handle) Folder.ok = true; toast('已還原'); updateBrand(); go('dash');
@@ -2881,16 +2947,16 @@ const NOTE_TEMPLATES = {
     text: (o) => j(`今${o.dept ? o.dept + '回診，' : ''}${o.src}${o.days ? '*' + o.days + '天' : ''}`, o.chronic && `慢籤*${o.chronic}回`, o.next && `下次回診時間於${roc(o.next)}`, o.adj, '依醫囑給予藥物使用', '續觀。'),
   },
   '施打疫苗': {
-    fields: [V('vac', '疫苗', 'select', ['流感及新冠疫苗', '流感疫苗', '新冠疫苗', '肺炎鏈球菌疫苗']), V('doc', '評估醫師', 'text', null, '巡診醫師'), V('consent', '同意', 'select', ['經家屬同意', '經住民本人同意'])],
+    fields: [V('vac', '疫苗', 'select', ['流感及新冠疫苗', '流感疫苗', '新冠疫苗', '肺炎鏈球菌疫苗（請另至疫苗頁登錄 PCV／PPV23）']), V('doc', '評估醫師', 'text', null, '巡診醫師'), V('consent', '同意', 'select', ['經家屬同意', '經住民本人同意'])],
     text: (o) => `${o.consent}，今由${o.doc}前來評估住民疫苗施打並與住民解釋施打疫苗之目的，現無不適之症狀，可以施打${o.vac}，衛教增加水份攝取，注意有無發燒及不適之症狀。`,
     link: { vaccine: true },
   },
   '跌倒': {
     fields: [V('time', '發現時間', 'time'), V('by', '發現者', 'select', ['巡視時發現', '照服員發現', '護理人員發現', '住民自行告知']), V('place', '地點', 'select', ['寢室床邊', '浴廁', '走廊', '餐廳／交誼廳', '活動室', '戶外']), V('how', '情境', 'select', ['自行下床', '自行拉開床欄下床', '自行解開約束下床', '如廁時', '推輪椅時重心不穩', '轉位時', '行走時', '坐在地上原因不明']),
-      V('lv', '意識', 'select', ['意識清楚', '意識混亂', '嗜睡', '情緒躁動']), V('inj', '傷勢', 'select', ['身體檢查無外傷或紅腫', '擦傷', '瘀青', '撕裂傷需縫合', '疑似骨折']), V('injd', '傷口描述', 'text', null, '', '例：左額頭 3*0.8 公分'),
+      V('lv', '意識', 'select', ['意識清楚', '意識混亂', '嗜睡', '情緒躁動']), V('inj', '傷勢', 'select', ['身體檢查無外傷或紅腫', '擦傷', '瘀青', '撕裂傷需縫合', '疑似骨折']), V('cause', '主要原因', 'select', ['住民健康情況', '治療或藥物反應', '環境中危險因子', '其他因素']), V('injd', '傷口描述', 'text', null, '', '例：左額頭 3*0.8 公分'),
       V('pain', '疼痛', 'select', ['無疼痛不適之主訴', '主訴疼痛']), V('act', '處置', 'select', ['已協助臥床休息', '協助攙扶起來', '傷口清潔消毒', '評估後予以送醫']), V('notify', '通知', 'select', ['已通知主管及家屬', '已傳訊息告知家屬', '已通知主管、家屬及醫師'])].concat(VS_FIELDS),
     text: (o) => j(`於${o.time || '__:__'}分${o.by === '巡視時發現' ? '巡視時發現住民' : o.by === '住民自行告知' ? '住民告知' : o.by + '住民'}於${o.place}${o.how}跌倒`, o.lv, vsLine(o), o.inj === '身體檢查無外傷或紅腫' ? o.inj : `身體檢查${o.injd ? o.injd : ''}${o.inj}`, o.pain, o.act, o.notify, o.act === '評估後予以送醫' ? '待追蹤。' : '重新評估跌倒風險，續觀。'),
-    link: { event: '跌倒', map: o => ({ place: o.place, injury: /無外傷/.test(o.inj) ? '無傷害' : /縫合/.test(o.inj) ? '中度（需縫合、扭傷）' : /骨折/.test(o.inj) ? '重度（骨折、頭部外傷）' : '輕度（擦傷、瘀青）', time: o.time, notify: ['家屬'].concat(/醫師/.test(o.notify) ? ['醫師'] : []).concat(/主管/.test(o.notify) ? ['業務負責人'] : []), factors: [/床欄/.test(o.how) && '設備：床欄或煞車未固定', /如廁/.test(o.how) && '個人：如廁急迫', /躁動|混亂/.test(o.lv) && '個人：認知障礙或躁動', /輪椅|行走|轉位/.test(o.how) && '個人：肌力／平衡差', /^0[0-5]|^2[2-3]/.test(o.time || '') && '人力：交班或夜間人力'].filter(Boolean) }) },
+    link: { event: '跌倒', map: o => ({ place: o.place, injury: /無外傷/.test(o.inj) ? '無傷害' : /縫合/.test(o.inj) ? '2級（中度：需縫合、扭傷）' : /骨折/.test(o.inj) ? '3級（重度：骨折、頭部外傷）' : '1級（輕度：擦傷、瘀青）', fallCause: o.cause, time: o.time, notify: ['家屬'].concat(/醫師/.test(o.notify) ? ['醫師'] : []).concat(/主管/.test(o.notify) ? ['業務負責人'] : []), factors: [/床欄/.test(o.how) && '設備：床欄或煞車未固定', /如廁/.test(o.how) && '個人：如廁急迫', /躁動|混亂/.test(o.lv) && '個人：認知障礙或躁動', /輪椅|行走|轉位/.test(o.how) && '個人：肌力／平衡差', /^0[0-5]|^2[2-3]/.test(o.time || '') && '人力：交班或夜間人力'].filter(Boolean) }) },
   },
   '送急診': {
     fields: [V('time', '發現時間', 'time'), V('sym', '狀況', 'select', ['呼吸喘', '血氧下降', '意識改變、叫喚無反應', '發燒不退', '抽搐', '胸悶胸痛', '嘔吐咖啡色物', '跌倒受傷', '其他']), V('symd', '狀況描述', 'text', null, '', '例：呼吸喘且呈腹式呼吸'),
@@ -2930,7 +2996,7 @@ const NOTE_TEMPLATES = {
   '痰多': {
     fields: [V('look', '痰液性狀', 'select', ['色黃、稠', '色白、稠', '色白、稀', '帶血絲']), V('breath', '呼吸', 'select', ['呼吸平順、偶咳嗽', '呼吸稍喘', '需抽痰']), V('act', '處置', 'select', ['依醫囑用藥，囑照服員落實翻身拍背、加強化痰', '予抽痰並回報醫師', '回報巡診醫師診治'])],
     text: (o) => j(`今住民痰液多、${o.look}`, o.breath, o.act, '續觀。'),
-    link: { infection: '呼吸道感染' },
+    link: { infection: '上呼吸道感染' },
   },
   '發燒': {
     fields: [V('t', '體溫'), V('sym', '伴隨症狀', 'text', null, '', '例：咳嗽、尿液混濁'), V('act', '處置', 'select', ['予溫水擦澡、增加水份攝取並通知醫師', '依醫囑給予退燒藥', '冰枕使用並監測體溫 q4h']), V('re', '30 分鐘後體溫', 'text')],
@@ -2994,7 +3060,8 @@ function tplLinkLabel(L) {
 ACT.tplBack = () => { const D = window.__noteDraft; $('#mbody').innerHTML = D.body(); };
 ACT.tplApply = () => {
   const D = window.__noteDraft, T = NOTE_TEMPLATES[tplState.t];
-  D.n.kind = '一般'; D.n.title = tplState.t; D.n.text = (D.n.text ? D.n.text + '\n' : '') + T.text(tplState.o);
+  D.n.title = tplState.t; const gen = T.text(tplState.o);
+  if (D.n.kind === 'DAR') D.n.D = (D.n.D ? D.n.D + '\n' : '') + gen; else if (D.n.kind === 'SOAP') D.n.O = (D.n.O ? D.n.O + '\n' : '') + gen; else D.n.text = (D.n.text ? D.n.text + '\n' : '') + gen;
   if (/緊急|送急診|跌倒|血氧|住院/.test(tplState.t)) D.n.handover = true;
   D.n._link = T.link && $('#tplLink') && $('#tplLink').checked ? { t: tplState.t, o: tplState.o } : null;
   if (tplState.o.t || tplState.o.sbp || tplState.o.spo2) D.n._vs = { t: tplState.o.t, p: tplState.o.p, r: tplState.o.r, sbp: tplState.o.sbp, dbp: tplState.o.dbp, spo2: tplState.o.spo2 };
@@ -3006,10 +3073,10 @@ function applyNoteLinks(n) {
   if (vs && n.date === today()) { const x = getDaily(n.rid, n.date); const patch = {}; [['temp', 't'], ['pulse', 'p'], ['resp', 'r'], ['sbp', 'sbp'], ['dbp', 'dbp'], ['spo2', 'spo2']].forEach(([a, b]) => { if (vs[b] !== '' && vs[b] != null && (x[a] === '' || x[a] == null)) patch[a] = +vs[b]; }); if (Object.keys(patch).length) setDaily(n.rid, n.date, patch); }
   if (!L) return [];
   const T = NOTE_TEMPLATES[L.t].link, o = L.o, made = [];
-  if (T.event) { const e = save('events', Object.assign({ rid: n.rid, type: T.event, date: n.date, time: o.time || n.time, desc: n.text, immediate: '', status: '追蹤中' }, T.map ? T.map(o) : {})); made.push(`${T.event}事件`); n.eventId = e.id; if (T.status) { const r = resById(n.rid); r.status = T.status; save('residents', r); } }
-  if (T.infection) { const e = save('events', { rid: n.rid, type: '感染', date: n.date, time: n.time, infType: T.infection, reported: '不需通報', desc: n.text, status: '追蹤中' }); made.push('感染監測'); n.eventId = e.id; }
+  if (T.event) { const e = save('events', Object.assign({ rid: n.rid, type: T.event, date: n.date, time: o.time || n.time, desc: noteText(n), immediate: '', status: '追蹤中' }, T.map ? T.map(o) : {})); made.push(`${T.event}事件`); n.eventId = e.id; if (T.status) { const r = resById(n.rid); r.status = T.status; save('residents', r); } }
+  if (T.infection) { const e = save('events', { rid: n.rid, type: '感染', date: n.date, time: n.time, infType: T.infection, reported: '不需通報', desc: noteText(n), status: '追蹤中' }); made.push('感染監測'); n.eventId = e.id; }
   if (T.contact) { save('contacts', { rid: n.rid, kind: T.contact, date: n.date, content: n.text }); made.push(T.contact); }
-  if (T.vaccine) { const kinds = /流感及新冠/.test(o.vac) ? ['流感', 'COVID-19'] : /流感/.test(o.vac) ? ['流感'] : /新冠/.test(o.vac) ? ['COVID-19'] : ['肺鏈 PPV23']; kinds.forEach(k => save('vaccines', { rid: n.rid, kind: k, date: n.date, refused: false })); made.push('疫苗接種'); }
+  if (T.vaccine) { const kinds = /流感及新冠/.test(o.vac) ? ['流感', 'COVID-19'] : /流感/.test(o.vac) ? ['流感'] : /新冠/.test(o.vac) ? ['COVID-19'] : []; kinds.forEach(k => save('vaccines', { rid: n.rid, kind: k, date: n.date, refused: false })); made.push('疫苗接種'); }
   return made;
 }
 
@@ -3065,6 +3132,7 @@ function wordDoc(pages, title) {
     body{font-family:"標楷體","DFKai-SB","BiauKai",serif;font-size:12pt} h1{text-align:center;font-size:17pt;margin:0 0 2pt} .org{text-align:center;font-size:12pt}
     table{border-collapse:collapse;width:100%;margin:4pt 0} td,th{border:1px solid #000;padding:3pt 5pt;vertical-align:top;font-size:11pt} th{background:#eee}
     .meta{font-size:11pt;margin:4pt 0} .note{font-size:9.5pt;color:#333} .box{border:1px solid #000;padding:4pt} .sign{margin-top:14pt}`;
+  pages = pages.map(p => p.replace(/(white-space:pre-wrap[^>]*>)([\s\S]*?)(<\/t[dh]>|<\/div>)/g, (m, a, b, c) => a + b.replace(/\n/g, '<br>') + c));
   const body = pages.map((p, i) => (i ? '<br clear="all" style="page-break-before:always">' : '') + p.replace(/<span class="ck y">/g, '<span>☑ ').replace(/<span class="ck">/g, '<span>☐ ').replace(/<div class="meta">([\s\S]*?)<\/div>/g, (m, inner) => `<p class="meta">${inner.replace(/<\/span>\s*<span>/g, '　　')}</p>`).replace(/<div class="sign">([\s\S]*?)<\/div>/g, (m, inner) => `<p class="sign">${inner.replace(/<\/span>\s*<span>/g, '　　')}</p>`)).join('');
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title>
     <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>${css}</style></head><body><div class="WordSection1">${body}</div></body></html>`;
@@ -3090,13 +3158,18 @@ Object.assign(EVENT_FIELD_DEF, {
   hospCause: { label: '住院原因', type: 'select', options: ['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'] },
   hospCauseD: { label: '原因說明', type: 'text', ph: '例：肺積水、肺炎' },
   returnDate: { label: '返回機構日期（保留床截止）', type: 'date' },
-  fallCause: { label: '主要原因類別', type: 'select', options: ['個人因素', '環境因素', '藥物因素', '設備因素', '照護人力因素', '其他'] },
+  fallCause: { label: '主要原因類別', type: 'select', options: ['住民健康情況', '治療或藥物反應', '環境中危險因子', '其他因素'] },
+  healDate: { label: '癒合日期', type: 'date' },
   wChange: { label: '體重變化', type: 'select', options: ['減輕 ≥ 5%', '增加 ≥ 5%'] },
   qaSign: { label: '品管負責人', type: 'text' }, mgrSign: { label: '單位主管', type: 'text' },
 });
 EVENT_TYPES['非計畫性住院'].fields = ['hospPlanned', 'hospCause', 'hospCauseD', 'hospital', 'dx', 'returnDate'];
 EVENT_TYPES['跌倒'].fields = ['place', 'injury', 'fallCause'];
 EVENT_TYPES['非計畫性體重改變'].fields = ['wChange'];
+EVENT_TYPES['壓力性損傷'].fields = ['site', 'stage', 'origin', 'healDate'];
+EVENT_FIELD_DEF.injury = { label: '傷害嚴重度', type: 'select', options: ['無傷害', '1級（輕度：擦傷、瘀青）', '2級（中度：需縫合、扭傷）', '3級（重度：骨折、頭部外傷）', '死亡'] };
+EVENT_FIELD_DEF.infType = { label: '感染類別', type: 'select', options: ['上呼吸道感染', '下呼吸道感染（肺炎）', '泌尿道感染', '皮膚（疥瘡）', '腸胃道（腹瀉）', '不明原因發燒', '傷口感染', '其他'] };
+EVENT_FIELD_DEF.stage = { label: '分級', type: 'select', options: ['第 1 級', '第 2 級', '第 3 級', '第 4 級', '無法分級（Unstageable）', '深部組織損傷（SDTI）'] };
 const EVENT_COMMON_TOP = ['shift', 'within72', 'tubesAt', 'dxs', 'dxOther'];
 function shiftOf(time) { const h = +(time || '12').slice(0, 2); return h >= 7 && h < 15 ? 'D 白班' : h >= 15 && h < 23 ? 'E 小夜' : 'N 大夜'; }
 function eventDefaults(e) {
@@ -3117,63 +3190,83 @@ ACT.fuAdd = () => { $('#fuList').insertAdjacentHTML('beforeend', fuRow({ date: t
 ACT.fuDel = el => el.closest('.fu').remove();
 function readFollowups() { return $$('#fuList .fu').map(r => ({ date: r.querySelector('[data-fu=date]').value, text: r.querySelector('[data-fu=text]').value.trim() })).filter(f => f.text); }
 
-/* --- 指標定義：資料收集項目 + 監測公式 + 預設閾值（可在系統內修改） --- */
+/* --- 指標定義：依原系統「指標月報」公式（住院依機構紙本月統計表）；閾值原系統未設定，以下為參考值，請在「閾值設定」修改 --- */
 const QI = [
-  { no: 1, name: '跌倒指標監測', type: '跌倒',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['t', '當月住民跌倒人次'], ['p', '當月住民跌倒人數'], ['inj', '當月跌倒造成傷害人次'], ['sev', '當月跌倒造成重度傷害人次'], ['h72', '當月入住72小時(含)內跌倒人次'], ['night', '當月大夜班跌倒人次']],
-    cat: { field: 'fallCause', label: '因「%」跌倒人次', opts: ['個人因素', '環境因素', '藥物因素', '設備因素', '照護人力因素', '其他'] },
-    mon: [['1.1', '跌倒發生率', 't', 'n', 100, '%', '<', 3, '當月住民跌倒人次／當月住民總人數*100%'], ['1.2', '跌倒發生密度', 't', 'pd', 1000, '‰', '<', 1, '當月住民跌倒人次／當月住民總人日數*1000‰'], ['1.3', '跌倒造成傷害比率', 'inj', 't', 100, '%', '<', 50, '跌倒造成傷害人次／當月跌倒人次*100%'], ['1.4', '跌倒造成重度傷害比率', 'sev', 't', 100, '%', '<', 5, '重度傷害人次／當月跌倒人次*100%']] },
-  { no: 2, name: '壓力性損傷指標監測', type: '壓力性損傷',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['newT', '當月機構內新發生壓力性損傷人次'], ['newP', '當月機構內新發生壓力性損傷人數'], ['inT', '當月帶入（入住或住院返回）人次'], ['prevP', '當月有壓力性損傷之住民人數'], ['g2', '當月新發生第 2 級以上人次']],
-    mon: [['2.1', '機構內新發生率', 'newT', 'n', 100, '%', '<', 2, '當月新發生人次／當月住民總人數*100%'], ['2.2', '機構內新發生密度', 'newT', 'pd', 1000, '‰', '<', 0.5, '當月新發生人次／當月住民總人日數*1000‰'], ['2.3', '壓力性損傷盛行率', 'prevP', 'n', 100, '%', '<', 5, '當月有壓力性損傷住民人數／當月住民總人數*100%'], ['2.4', '新發生第 2 級以上比率', 'g2', 'newT', 100, '%', '', '', '第 2 級以上人次／當月新發生人次*100%']] },
-  { no: 3, name: '約束指標監測', type: null,
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['rd', '當月約束人日數'], ['rp', '當月約束人數'], ['bad', '當月同意書逾期或評估不完整人數']],
-    mon: [['3.1', '約束率（人日）', 'rd', 'pd', 100, '%', '<', 10, '當月約束人日數／當月住民總人日數*100%'], ['3.2', '約束人數比率', 'rp', 'n', 100, '%', '<', 10, '當月約束人數／當月住民總人數*100%'], ['3.3', '約束同意書完整率', 'okp', 'rp', 100, '%', '>=', 100, '同意書與評估完整人數／當月約束人數*100%']] },
-  { no: 4, name: '感染指標監測', type: '感染',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['t', '當月住民感染人次'], ['p', '當月住民感染人數'], ['h72', '當月入住72小時(含)內感染人次']],
-    cat: { field: 'infType', label: '「%」人次', opts: ['呼吸道感染', '泌尿道感染', '皮膚（疥瘡）', '腸胃道（腹瀉）', '不明原因發燒', '傷口感染', '其他'] },
-    mon: [['4.1', '感染發生率', 't', 'n', 100, '%', '<', 5, '當月住民感染人次／當月住民總人數*100%'], ['4.2', '感染密度', 't', 'pd', 1000, '‰', '<', 2, '當月住民感染人次／當月住民總人日數*1000‰']] },
-  { no: 5, name: '非計畫性轉至急性醫院住院指標監測', type: '非計畫性住院',
-    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['allP', '當月轉至急性醫院住院住民之總人數'], ['newR', '當月新住民人數'], ['uP', '當月非計畫性轉至急性醫院住院人數'], ['allT', '當月全體住民轉至急性醫院住院人次'], ['uT', '當月非計畫性轉至急性醫院住院人次'], ['h72', '當月入住72小時(含)內非計畫性轉至急性醫院住院人次']],
-    cat: { field: 'hospCause', label: '因「%」非計畫性轉至急性醫院住院人次', opts: ['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'], den: 'uP', monLabel: '因「%」非計畫性轉至急性醫院住院之比率', base: '5.5' },
-    mon: [['5.1', '轉至急性醫院住院比率', 'allT', 'n', 100, '%', '<', 5, '當月全體住民轉至急性醫院住院人次／當月住民總人數*100%'], ['5.2', '轉至急性醫院住院密度', 'allT', 'pd', 100, '%', '<', 0.5, '當月全體住民轉至急性醫院住院人次／當月住民總人日數*100%'], ['5.3', '非計畫性轉急性醫院住院比率', 'uT', 'allP', 100, '%', '<=', 100, '當月非計畫性轉至急性醫院住院人次／當月轉至急性醫院住院住民之總人數*100'], ['5.4', '新住民入住72小時(含)內非計畫性轉至急性醫院住院比率', 'h72', 'newR', 100, '%', '<=', 0, '當月入住72小時(含)內非計畫性轉至急性醫院住院人次／當月新住民人數*100%']] },
-  { no: 6, name: '非計畫性體重改變指標監測', type: '非計畫性體重改變',
-    data: [['n', '當月住民總人數'], ['meas', '當月完成體重測量人數'], ['t', '當月非計畫性體重改變人數'], ['loss', '當月體重減輕 ≥ 5% 人數'], ['gain', '當月體重增加 ≥ 5% 人數']],
-    mon: [['6.1', '非計畫性體重改變比率', 't', 'n', 100, '%', '<', 5, '當月非計畫性體重改變人數／當月住民總人數*100%'], ['6.2', '體重測量完成率', 'meas', 'n', 100, '%', '>=', 95, '當月完成體重測量人數／當月住民總人數*100%']] },
-  { no: 7, name: '管路照護指標監測', type: '管路滑脫／自拔',
-    data: [['ngP', '當月留置鼻胃管人數'], ['foP', '當月留置導尿管人數'], ['tubeD', '當月管路留置人日數'], ['slip', '當月管路滑脫／自拔人次'], ['rem', '當月管路成功移除人次']],
-    mon: [['7.1', '管路滑脫／自拔密度', 'slip', 'tubeD', 1000, '‰', '<', 1, '當月管路滑脫自拔人次／當月管路留置人日數*1000‰'], ['7.2', '管路移除比率', 'rem', 'tubeP', 100, '%', '', '', '當月管路成功移除人次／當月留置管路人數*100%']] },
+  { no: 1, name: '跌倒指標監測', type: '跌倒', main: 'C',
+    data: [['A', '當月總住民人日數', '保留床人日數'], ['B', '當月有跌倒記錄住民人數'], ['C', '住民跌倒總件數'], ['D', '跌倒造成傷害總件數'], ['E', '重複跌倒者人數'], ['F1', '因住民健康情況而造成跌倒件數'], ['F2', '因治療或藥物反應而造成跌倒件數'], ['F3', '因環境中危險因子而造成跌倒件數'], ['F4', '因其他因素而造成跌倒件數'], ['G1', '跌倒傷害嚴重度1級'], ['G2', '跌倒傷害嚴重度2級'], ['G3', '跌倒傷害嚴重度3級']],
+    mon: [['1.1', '跌倒發生密度', 'C', 'A', 100, '%', '<', 0.2, 'C/A'], ['1.2', '跌倒造成傷害發生率', 'D', 'C', 100, '%', '<', 50, 'D/C'], ['1.3', '重複跌倒者佔跌倒者之比率', 'E', 'B', 100, '%', '', '', 'E/B'], ['1.4', '因住民健康情況而造成跌倒發生率', 'F1', 'C', 100, '%', '', '', 'F1/C'], ['1.5', '因治療或藥物反應而造成跌倒發生率', 'F2', 'C', 100, '%', '', '', 'F2/C'], ['1.6', '因環境中危險因子而造成跌倒發生率', 'F3', 'C', 100, '%', '', '', 'F3/C'], ['1.7', '因其他因素而造成跌倒發生率', 'F4', 'C', 100, '%', '', '', 'F4/C'], ['1.8', '跌倒傷害嚴重度1級發生率', 'G1', 'D', 100, '%', '', '', 'G1/D'], ['1.9', '跌倒傷害嚴重度2級發生率', 'G2', 'D', 100, '%', '', '', 'G2/D'], ['1.10', '跌倒傷害嚴重度3級發生率', 'G3', 'D', 100, '%', '<', 5, 'G3/D']],
+    cause: [['F1', '住民健康情況'], ['F2', '治療或藥物反應'], ['F3', '環境中危險因子'], ['F4', '其他因素']] },
+  { no: 2, name: '壓瘡指標監測', type: '壓力性損傷', main: 'E',
+    data: [['A', '測量當日住民總人數'], ['B', '測量當日有壓瘡人數'], ['C1', '第一級壓瘡現存人次'], ['C2', '第二級壓瘡現存人次'], ['C3', '第三級壓瘡現存人次'], ['C4', '第四級壓瘡現存人次'], ['C5', 'Unstageable現存人次'], ['C6', 'SDTI現存人次'], ['D', '當月住民總人數'], ['E', '入住後發生壓瘡總人次'], ['F1', '第一級壓瘡發生人次'], ['F2', '第二級壓瘡發生人次'], ['F3', '第三級壓瘡發生人次'], ['F4', '第四級壓瘡發生人次'], ['F5', 'Unstageable發生人次'], ['F6', 'SDTI發生人次']],
+    mon: [['2.1', '壓瘡點盛行率', 'B', 'A', 100, '%', '<', 5, 'B/A'], ['2.2', '壓瘡發生率', 'E', 'D', 100, '%', '<', 2, 'E/D']].concat(['一', '二', '三', '四'].map((c, i) => [`2.${3 + i}`, `${c}級壓瘡點盛行率`, `C${i + 1}`, 'A', 100, '%', '', '', `C${i + 1}/A`]), [['2.7', 'Unstageable盛行率', 'C5', 'A', 100, '%', '', '', 'C5/A'], ['2.8', 'SDTI盛行率', 'C6', 'A', 100, '%', '', '', 'C6/A']], ['一', '二', '三', '四'].map((c, i) => [`2.${9 + i}`, `${c}級壓瘡發生率`, `F${i + 1}`, 'D', 100, '%', '', '', `F${i + 1}/D`]), [['2.13', 'Unstageable發生率', 'F5', 'D', 100, '%', '', '', 'F5/D'], ['2.14', 'SDTI發生率', 'F6', 'D', 100, '%', '', '', 'F6/D']]) },
+  { no: 3, name: '身體約束指標監測', type: null, main: 'B',
+    data: [['A', '當月住民總人日數', '保留床人日數'], ['B', '當月受身體約束住民人數'], ['C1', '因預防跌倒所造成的約束人數'], ['C2', '因預防管路自拔所造成的約束人數'], ['C3', '因預防自傷所造成的約束人數'], ['C4', '因行為紊亂所造成的約束人數'], ['C5', '因協助治療所造成的約束人數'], ['C6', '因其他因素所造成的約束人數'], ['D1', '約束持續時間 >4 至 ≤8 小時人數'], ['D2', '約束持續時間 >8 至 ≤16 小時人數'], ['D3', '約束持續時間 >16 至 ≤24 小時人數'], ['E1', '住民受身體約束2種以上人數'], ['F1', '移除身體約束人次'], ['F2', '移除約束至少維持24小時以上住民人數']],
+    mon: [['3.1', '約束發生密度', 'B', 'A', 100, '%', '<', 0.5, 'B/A'], ['3.2', '約束持續時間 >4 至 ≤8 小時比率', 'D1', 'B', 100, '%', '', '', 'D1/B'], ['3.3', '約束持續時間 >8 至 ≤16 小時比率', 'D2', 'B', 100, '%', '', '', 'D2/B'], ['3.4', '約束持續時間 >16 至 ≤24 小時比率', 'D3', 'B', 100, '%', '', '', 'D3/B'], ['3.5', '約束移除成功率', 'F2', 'F1', 100, '%', '', '', 'F2/F1']],
+    cause: [['C1', '預防跌倒'], ['C2', '預防管路自拔'], ['C3', '預防自傷'], ['C4', '行為紊亂'], ['C5', '協助治療'], ['C6', '其他因素']] },
+  { no: 4, name: '感染指標監測', type: '感染', main: 'B',
+    data: [['A', '當月總住民人日數', '保留床人日數'], ['B', '感染人次'], ['C1', '呼吸道感染人次'], ['C2', '下呼吸道感染人次'], ['C3', '泌尿道感染人次'], ['D', '當月使用導尿管人日數'], ['E', '使用存留導尿管的泌尿道感染人次'], ['F', '當月未使用導尿管人日數'], ['G', '未使用存留導尿管的泌尿道感染人次'], ['C4', '皮膚感染人次'], ['C5', '腸胃道感染人次'], ['C6', '其它感染人次']],
+    mon: [['4.1', '感染發生密度', 'B', 'A', 1000, '‰', '<', 2, 'B/A'], ['4.2', '呼吸道感染發生密度', 'C1', 'A', 1000, '‰', '', '', 'C1/A'], ['4.3', '下呼吸道感染發生密度', 'C2', 'A', 1000, '‰', '', '', 'C2/A'], ['4.4', '泌尿道感染發生密度', 'C3', 'A', 1000, '‰', '', '', 'C3/A'], ['4.5', '使用存留導尿管的泌尿道感染發生密度', 'E', 'D', 1000, '‰', '', '', 'E/D'], ['4.6', '未使用存留導尿管的泌尿道感染發生密度', 'G', 'F', 1000, '‰', '', '', 'G/F'], ['4.7', '皮膚感染率發生密度', 'C4', 'A', 1000, '‰', '', '', 'C4/A'], ['4.8', '腸胃道感染率發生密度', 'C5', 'A', 1000, '‰', '', '', 'C5/A'], ['4.9', '其它感染率發生密度', 'C6', 'A', 1000, '‰', '', '', 'C6/A']],
+    cause: [['C1', '呼吸道感染'], ['C3', '泌尿道感染'], ['C4', '皮膚感染'], ['C5', '腸胃道感染'], ['C6', '其它感染']] },
+  { no: 5, name: '非計畫性轉至急性醫院住院指標監測', type: '非計畫性住院', main: 'uT',
+    data: [['pd', '當月住民總人日數', '保留床人日數'], ['n', '當月住民總人數'], ['allP', '當月轉至急性醫院住院住民之總人數'], ['newR', '當月新住民人數'], ['uP', '當月非計畫性轉至急性醫院住院人數'], ['allT', '當月全體住民轉至急性醫院住院人次'], ['uT', '當月非計畫性轉至急性醫院住院人次'], ['h72', '當月入住72小時(含)內非計畫性轉至急性醫院住院人次'], ['c0', '因「心血管代償機能減退」非計畫性轉至急性醫院住院人次'], ['c1', '因「腸胃道出血」非計畫性轉至急性醫院住院人次'], ['c2', '因「骨折」非計畫性轉至急性醫院住院人次'], ['c3', '因「感染」非計畫性轉至急性醫院住院人次'], ['c4', '因「其他內外科」非計畫性轉至急性醫院住院人次']],
+    mon: [['5.1', '轉至急性醫院住院比率', 'allT', 'n', 100, '%', '<', 5, '當月全體住民轉至急性醫院住院人次／當月住民總人數*100%'], ['5.2', '轉至急性醫院住院密度', 'allT', 'pd', 100, '%', '<', 0.5, '當月全體住民轉至急性醫院住院人次／當月住民總人日數*100%'], ['5.3', '非計畫性轉急性醫院住院比率', 'uT', 'allP', 100, '%', '<=', 100, '當月非計畫性轉至急性醫院住院人次／當月轉至急性醫院住院住民之總人數*100'], ['5.4', '新住民入住72小時(含)內非計畫性轉至急性醫院住院比率', 'h72', 'newR', 100, '%', '<=', 0, '當月入住72小時(含)內非計畫性轉至急性醫院住院人次／當月新住民人數*100%']].concat(['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'].map((o, i) => [`5.5.${i + 1}`, `因「${o}」非計畫性轉至急性醫院住院之比率`, 'c' + i, 'uP', 100, '%', '', '', `因「${o}」非計畫性轉至急性醫院住院人次／當月非計畫性轉至急性醫院住院人數*100%`])),
+    cause: [['c0', '心血管代償機能減退'], ['c1', '腸胃道出血'], ['c2', '骨折'], ['c3', '感染'], ['c4', '其他內外科']] },
+  { no: 6, name: '非計畫性體重改變指標監測', type: '非計畫性體重改變', main: 'B',
+    data: [['A', '入住超過30天(含)的住民數'], ['B', '體重減輕5%以上的住民數'], ['C', '體重增加5%以上的住民數'], ['D', '當月新住民人次'], ['D1', '入住時消瘦住民數（BMI<18.5）'], ['D2', '入住時過重住民數（BMI≥24）']],
+    mon: [['6.1', '非計畫性體重減輕比率', 'B', 'A', 100, '%', '<', 5, 'B/A'], ['6.2', '非計畫性體重增加比率', 'C', 'A', 100, '%', '<', 5, 'C/A'], ['6.3', '入住時消瘦住民比率', 'D1', 'D', 100, '%', '', '', 'D1/D'], ['6.4', '入住時過重住民比率', 'D2', 'D', 100, '%', '', '', 'D2/D']] },
+  { no: 7, name: '管路使用指標監測', type: '管路滑脫／自拔', main: 'B1',
+    data: [['A', '當月住民總人日數', '保留床人日數'], ['B1', '使用鼻胃管人日數'], ['B2', '使用存留導尿管人日數'], ['B3', '膀胱造廔人日數'], ['B4', '結腸造廔人日數'], ['S', '管路滑脫／自拔人次'], ['R', '管路成功移除人次']],
+    mon: [['7.1', '使用鼻胃管比率', 'B1', 'A', 100, '%', '', '', 'B1/A'], ['7.2', '使用存留導尿管比率', 'B2', 'A', 100, '%', '', '', 'B2/A'], ['7.3', '膀胱造廔比率', 'B3', 'A', 100, '%', '', '', 'B3/A'], ['7.4', '結腸造廔比率', 'B4', 'A', 100, '%', '', '', 'B4/A'], ['7.5', '管路滑脫／自拔密度', 'S', 'TD', 1000, '‰', '<', 1, '管路滑脫自拔人次／管路留置人日數*1000‰']] },
+  { no: 8, name: '疼痛指標監測', type: null, main: 'P',
+    data: [['A', '當月住民總人日數', '保留床人日數'], ['P', '疼痛（分數>0）紀錄人日數'], ['P4', '中重度疼痛（≥4分）紀錄人日數'], ['N', '有疼痛紀錄住民人數']],
+    mon: [['8.1', '當月機構疼痛比率', 'P', 'A', 100, '%', '', '', 'P/A'], ['8.2', '中重度疼痛比率', 'P4', 'A', 100, '%', '<', 2, 'P4/A']] },
 ];
 function qiThr(monId, def) { const t = (DB.settings.qiThr || {})[monId]; return t ? t : def; }
 
 /* --- 計算：保留床（住院期間）人日數不列入住民總人日數 --- */
 function hospDays(rid, f, t) {
   let n = 0;
-  DB.events.filter(e => e.rid === rid && e.type === '非計畫性住院' || (e.rid === rid && e.type === '計畫性住院')).forEach(e => {
-    const s = e.date > f ? e.date : f; let end = e.returnDate || (resById(rid) && resById(rid).status === '住院中' ? today() : e.date); end = end < t ? end : t;
+  DB.events.filter(e => e.rid === rid && e.type === '非計畫性住院').forEach(e => {
+    const s = e.date > f ? e.date : f; const lastH = DB.events.filter(x => x.rid === rid && x.type === '非計畫性住院').sort((a, b) => b.date.localeCompare(a.date))[0];
+    let end = e.returnDate || (e === lastH && resById(rid) && resById(rid).status === '住院中' ? today() : e.date); end = end < t ? end : t;
     if (end >= s) n += diffDays(s, end) + (e.returnDate && e.returnDate <= t ? 0 : 1);
   });
   return n;
 }
+function injuryLevel(e) { const s = e.injury || ''; return /3級|重度|骨折|死亡/.test(s) ? 3 : /2級|中度/.test(s) ? 2 : /1級|輕度/.test(s) ? 1 : 0; }
+function fallCauseKey(e) { const c = e.fallCause || ''; return /健康|個人/.test(c) ? 'F1' : /藥物|治療/.test(c) ? 'F2' : /環境|設備/.test(c) ? 'F3' : 'F4'; }
+function stageKey(e) { const s = e.stage || ''; return /1/.test(s) ? 1 : /2/.test(s) ? 2 : /3/.test(s) ? 3 : /4/.test(s) ? 4 : /無法|Unstage/i.test(s) ? 5 : /深部|SDTI/i.test(s) ? 6 : 2; }
+function infKey(e) { const s = e.infType || ''; return /下呼吸|肺炎/.test(s) ? 'low' : /呼吸/.test(s) ? 'resp' : /泌尿/.test(s) ? 'uti' : /皮膚|疥/.test(s) ? 'skin' : /腸|腹瀉/.test(s) ? 'gi' : 'other'; }
+function heightOf(r) { if (r.height) return +r.height; const m = DB.assessments.filter(a => a.rid === r.id && a.type === 'mna' && a.extra && a.extra.height).sort((a, b) => b.date.localeCompare(a.date))[0]; return m ? +m.extra.height : 0; }
 function qiCompute(ind, f, t) {
+  const tt = t < today() ? t : today();
   const rs = DB.residents.filter(r => r.admitDate && r.admitDate <= t && (!r.dischargeDate || r.dischargeDate >= f));
-  let rawPd = 0, hosp = 0; rs.forEach(r => { const s = r.admitDate > f ? r.admitDate : f; const end0 = r.dischargeDate || t; const e = end0 < t ? end0 : (t < today() ? t : today()); if (e >= s) rawPd += diffDays(s, e) + 1; hosp += hospDays(r.id, f, t); });
-  const D = { pd: rawPd - hosp, pdEx: hosp, n: rs.length, newR: rs.filter(r => r.admitDate >= f && r.admitDate <= t).length };
+  const stay = r => { const s = r.admitDate > f ? r.admitDate : f; const e0 = r.dischargeDate || tt; const e = e0 < tt ? e0 : tt; return e >= s ? diffDays(s, e) + 1 : 0; };
+  let rawPd = 0, hosp = 0; rs.forEach(r => { rawPd += stay(r); hosp += hospDays(r.id, f, t); });
+  const pd = rawPd - hosp, D = { A: pd, pd, pdEx: hosp, n: rs.length, newR: rs.filter(r => r.admitDate >= f && r.admitDate <= t).length };
   const ev = ind.type ? DB.events.filter(e => e.type === ind.type && e.date >= f && e.date <= t) : [];
   const uniq = a => new Set(a.map(e => e.rid)).size;
   const w72 = e => { const r = resById(e.rid); return e.within72 === '是' || (r && r.admitDate && diffDays(r.admitDate, e.date) <= 3 && e.date >= r.admitDate); };
-  if (ind.no === 1) Object.assign(D, { t: ev.length, p: uniq(ev), inj: ev.filter(e => e.injury && !/^無/.test(e.injury)).length, sev: ev.filter(e => /重度|死亡/.test(e.injury || '')).length, h72: ev.filter(w72).length, night: ev.filter(e => /^N/.test(e.shift || shiftOf(e.time))).length });
-  if (ind.no === 2) { const nw = ev.filter(e => (e.origin || '機構內新發生') === '機構內新發生'); Object.assign(D, { newT: nw.length, newP: uniq(nw), inT: ev.length - nw.length, prevP: uniq(DB.events.filter(e => e.type === '壓力性損傷' && e.date <= t && (e.status !== '結案' || (e.updated || '').slice(0, 10) >= f))), g2: nw.filter(e => !/第 1 級/.test(e.stage || '')).length }); }
-  if (ind.no === 3) { const rr = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f)); let rd = 0; rr.forEach(x => { const s = x.startDate > f ? x.startDate : f; const e0 = x.endDate || today(); const e = e0 < t ? e0 : t; if (e >= s) rd += diffDays(s, e) + 1; }); const bad = rr.filter(x => !x.consentDate || diffDays(x.consentDate, t < today() ? t : today()) > 90 || !(x.alternatives || []).length).length; Object.assign(D, { rd, rp: new Set(rr.map(x => x.rid)).size, bad, okp: new Set(rr.map(x => x.rid)).size - bad }); }
-  if (ind.no === 4) Object.assign(D, { t: ev.length, p: uniq(ev), h72: ev.filter(w72).length });
-  if (ind.no === 5) { const all = ev, un = ev.filter(e => !/^計畫性/.test(e.hospPlanned || '')); Object.assign(D, { allP: uniq(all), allT: all.length, uP: uniq(un), uT: un.length, h72: un.filter(w72).length }); ev.splice(0, ev.length, ...un); }
-  if (ind.no === 6) Object.assign(D, { meas: rs.filter(r => DB.weights.some(w => w.rid === r.id && w.date >= f && w.date <= t)).length, t: uniq(ev), loss: uniq(ev.filter(e => /減輕/.test(e.wChange || '減輕'))), gain: uniq(ev.filter(e => /增加/.test(e.wChange || ''))) });
-  if (ind.no === 7) { const ng = rs.filter(r => r.tubes && r.tubes.ng), fo = rs.filter(r => r.tubes && r.tubes.foley); const days = diffDays(f, t < today() ? t : today()) + 1; Object.assign(D, { ngP: ng.length, foP: fo.length, tubeP: ng.length + fo.length, tubeD: (ng.length + fo.length) * days, slip: ev.length, rem: DB.events.filter(e => e.type === '管路移除' && e.date >= f && e.date <= t).length }); }
-  if (ind.cat) ind.cat.opts.forEach((o, i) => D['c' + i] = ev.filter(e => (e[ind.cat.field] || (ind.no === 1 ? '其他' : ind.cat.opts[ind.cat.opts.length - 1])) === o).length);
-  // 人工覆寫（例如保留床人日數）
-  const ov = ((DB.settings.qiOverride || {})[`${ind.no}|${f.slice(0, 7)}`]) || {}; Object.assign(D, ov);
+  const exA = ['A'];
+  if (ind.no === 1) { const byR = {}; ev.forEach(e => byR[e.rid] = (byR[e.rid] || 0) + 1); const allYear = DB.events.filter(e => e.type === '跌倒' && e.date <= t && diffDays(e.date, t) <= 365);
+    Object.assign(D, { B: uniq(ev), C: ev.length, D: ev.filter(e => injuryLevel(e) > 0).length, E: Object.keys(byR).filter(rid => allYear.filter(e => e.rid === rid).length >= 2).length, F1: 0, F2: 0, F3: 0, F4: 0, G1: ev.filter(e => injuryLevel(e) === 1).length, G2: ev.filter(e => injuryLevel(e) === 2).length, G3: ev.filter(e => injuryLevel(e) === 3).length }); ev.forEach(e => D[fallCauseKey(e)]++); }
+  if (ind.no === 2) { const all = DB.events.filter(e => e.type === '壓力性損傷' && e.date <= t && (!e.healDate || e.healDate > t) && !(e.status === '結案' && !e.healDate && (e.updated || e.date).slice(0, 10) <= t)); const nw = ev.filter(e => (e.origin || '機構內新發生') === '機構內新發生');
+    Object.assign(D, { A: rs.filter(r => !r.dischargeDate || r.dischargeDate >= tt).length, B: uniq(all), D: rs.length, E: nw.length }); for (let i = 1; i <= 6; i++) { D['C' + i] = all.filter(e => stageKey(e) === i).length; D['F' + i] = nw.filter(e => stageKey(e) === i).length; } exA.length = 0; }
+  if (ind.no === 3) { const rr = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f)); const rk = x => (x.reasons || []).map(r => /跌倒/.test(r) ? 'C1' : /管路/.test(r) ? 'C2' : /自傷/.test(r) ? 'C3' : /行為/.test(r) ? 'C4' : /治療/.test(r) ? 'C5' : 'C6');
+    Object.assign(D, { B: new Set(rr.map(x => x.rid)).size, C1: 0, C2: 0, C3: 0, C4: 0, C5: 0, C6: 0, D1: rr.filter(x => /4.*8/.test(x.hours || '')).length, D2: rr.filter(x => /8.*16/.test(x.hours || '')).length, D3: rr.filter(x => /16.*24/.test(x.hours || '')).length, E1: rr.filter(x => x.form2).length });
+    rr.forEach(x => [...new Set(rk(x))].forEach(k => D[k]++)); const removed = DB.restraints.filter(x => x.endDate && x.endDate >= f && x.endDate <= t); D.F1 = removed.length; D.F2 = removed.filter(x => !DB.restraints.some(y => y.rid === x.rid && y !== x && y.startDate >= x.endDate && diffDays(x.endDate, y.startDate) <= 1)).length; }
+  if (ind.no === 4) { const k = ev.map(e => [e, infKey(e)]); const foley = r => r.tubes && r.tubes.foley; const fd = rs.filter(foley).reduce((s, r) => s + stay(r), 0);
+    Object.assign(D, { B: ev.length, C1: k.filter(x => x[1] === 'resp' || x[1] === 'low').length, C2: k.filter(x => x[1] === 'low').length, C3: k.filter(x => x[1] === 'uti').length, D: fd, F: pd - fd, E: k.filter(x => x[1] === 'uti' && ((x[0].tubesAt || []).includes('導尿管') || foley(resById(x[0].rid) || {}))).length, C4: k.filter(x => x[1] === 'skin').length, C5: k.filter(x => x[1] === 'gi').length, C6: k.filter(x => x[1] === 'other').length }); D.G = D.C3 - D.E; }
+  if (ind.no === 5) { const un = ev.filter(e => !/^計畫性/.test(e.hospPlanned || '')); Object.assign(D, { allP: uniq(ev), allT: ev.length, uP: uniq(un), uT: un.length, h72: un.filter(w72).length }); ['心血管代償機能減退', '腸胃道出血', '骨折', '感染', '其他內外科'].forEach((o, i) => D['c' + i] = un.filter(e => (e.hospCause || '其他內外科') === o).length); ev.splice(0, ev.length, ...un); }
+  if (ind.no === 6) { const A = rs.filter(r => diffDays(r.admitDate, tt) >= 30); const chg = r => { const ws = weightsOf(r.id).filter(w => w.date <= t); const inM = ws.filter(w => w.date >= f); let loss = false, gain = false; inM.forEach(w => ws.filter(p => p.date < w.date && diffDays(p.date, w.date) <= 31).forEach(p => { const pc = (w.kg - p.kg) / p.kg * 100; if (pc <= -5) loss = true; if (pc >= 5) gain = true; })); ev.filter(e => e.rid === r.id).forEach(e => { if (/增加/.test(e.wChange || '')) gain = true; else loss = true; }); return { loss, gain }; };
+    const nr = rs.filter(r => r.admitDate >= f && r.admitDate <= t); const bmi0 = r => { const h = heightOf(r), w = weightsOf(r.id)[0]; return h && w ? w.kg / Math.pow(h / 100, 2) : 0; };
+    Object.assign(D, { A: A.length, B: A.filter(r => chg(r).loss).length, C: A.filter(r => chg(r).gain).length, D: nr.length, D1: nr.filter(r => bmi0(r) && bmi0(r) < 18.5).length, D2: nr.filter(r => bmi0(r) >= 24).length }); exA.length = 0; }
+  if (ind.no === 7) { const td = k => rs.filter(r => r.tubes && r.tubes[k]).reduce((s, r) => s + stay(r), 0); Object.assign(D, { B1: td('ng'), B2: td('foley'), B3: td('cysto'), B4: td('colo'), S: ev.length, R: DB.events.filter(e => e.type === '管路移除' && e.date >= f && e.date <= t).length }); D.TD = D.B1 + D.B2 + D.B3 + D.B4; }
+  if (ind.no === 8) { const dd = DB.daily.filter(d => d.date >= f && d.date <= t && d.pain !== '' && d.pain != null); Object.assign(D, { P: dd.filter(d => +d.pain > 0).length, P4: dd.filter(d => +d.pain >= 4).length, N: new Set(dd.filter(d => +d.pain > 0).map(d => d.rid)).size }); }
+  if (!exA.length) D.pdEx = '';
+  const oneMonth = f.slice(8) === '01' && t === monthRange(f.slice(0, 7))[1];
+  const ov = oneMonth ? (((DB.settings.qiOverride || {})[`${ind.no}|${f.slice(0, 7)}`]) || {}) : {}; Object.assign(D, ov); if (ov.pd !== undefined) D.A = ov.pd; if (ov.A !== undefined) D.pd = ov.A;
   const M = ind.mon.map(([id, name, num, den, mult, unit, op, thr, formula]) => { const T = qiThr(id, { op, v: thr }); const v = D[den] ? D[num] / D[den] * mult : 0; return { id, name, num, den, unit, v, op: T.op, thr: T.v, formula, ok: !T.op || T.v === '' ? null : qiPass(v, T) }; });
-  if (ind.cat && ind.cat.base) ind.cat.opts.forEach((o, i) => M.push({ id: `${ind.cat.base}.${i + 1}`, name: ind.cat.monLabel.replace('%', o), unit: '%', v: D[ind.cat.den] ? D['c' + i] / D[ind.cat.den] * 100 : 0, op: '', thr: '', formula: `${ind.cat.label.replace('%', o)}／當月非計畫性轉至急性醫院住院人數*100%`, ok: null }));
   return { D, M, ev };
 }
 function qiPass(v, T) { const x = +(+v).toFixed(2), y = +T.v; return T.op === '<' ? x < y : T.op === '<=' ? x <= y : T.op === '>=' ? x >= y : T.op === '>' ? x > y : null; }
@@ -3188,19 +3281,19 @@ function qiTabs(active) {
 let qiMonth = null;
 ROUTES.qimonth = () => {
   const m = qiMonth || today().slice(0, 7), [f, t] = monthRange(m), done = (DB.settings.qiMonthDone || {})[m];
-  const months = [...Array(12)].map((_, i) => { const d = new Date(); d.setMonth(d.getMonth() - i); return ymd(d).slice(0, 7); });
+  const months = [...Array(12)].map((_, i) => { const n = new Date(); return ymd(new Date(n.getFullYear(), n.getMonth() - i, 1)).slice(0, 7); });
   return `${qiTabs('qimonth')}<div class="hd"><div><h1>指標監測月統計表</h1><p class="sub">資料收集數值由系統自動計算（人日數已扣除住院保留床人日）。數值有誤可直接修改，會記錄為人工校正。每月 5 日前確認上月報表。</p></div><span class="sp"></span>
     <select id="qmSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${months.map(x => `<option${x === m ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
   <div class="row" style="margin-bottom:12px"><span class="chip ${done ? 'ok' : 'warn'}">${done ? `已確認（${esc(done.by)}，${roc(done.date)}）` : '尚未確認'}</span><span class="sp"></span><button class="btn" data-act="qmPrint" data-m="${m}">列印／Word：全部指標</button><button class="btn pri" data-act="qmDone" data-m="${m}">確認本月報表</button></div>
   ${QI.map(ind => { const { D, M } = qiCompute(ind, f, t); const ov = (DB.settings.qiOverride || {})[`${ind.no}|${m}`] || {};
     return `<details class="acc-item" ${M.some(x => x.ok === false) ? 'open' : ''}><summary><span class="code">${ind.no}</span><b style="flex:1">${ind.name}</b>${M.some(x => x.ok === false) ? '<span class="chip bad">超過閾值</span>' : '<span class="chip ok">閾值內</span>'}<button class="btn sm" data-act="qmPrintOne" data-m="${m}" data-no="${ind.no}">列印</button></summary>
-    <div class="body grid g2" style="align-items:start"><div><h3>資料收集</h3><table class="t">${ind.data.map(([k, l, ex]) => `<tr><td>${l}</td><td style="width:90px"><input type="number" class="qmIn" data-no="${ind.no}" data-m="${m}" data-k="${k}" value="${D[k]}" style="width:80px;padding:4px;border:1px solid ${ov[k] !== undefined ? 'var(--amber)' : 'var(--line)'};border-radius:6px"></td><td class="small muted">${ex ? `${ex} ${D.pdEx}` : ''}</td></tr>`).join('')}
-      ${ind.cat ? ind.cat.opts.map((o, i) => `<tr><td>${ind.cat.label.replace('%', o)}</td><td>${D['c' + i]}</td><td></td></tr>`).join('') : ''}</table></div>
+    <div class="body grid g2" style="align-items:start"><div><h3>資料收集</h3><table class="t">${ind.data.map(([k, l, ex]) => `<tr><td>${l}${/^[A-Z]\d?$/.test(k) ? `(${k})` : ''}</td><td style="width:90px"><input type="number" class="qmIn" data-no="${ind.no}" data-m="${m}" data-k="${k}" value="${D[k]}" style="width:80px;padding:4px;border:1px solid ${ov[k] !== undefined ? 'var(--amber)' : 'var(--line)'};border-radius:6px"></td><td class="small muted">${ex && D.pdEx !== '' ? `${ex} ${D.pdEx}` : ''}</td></tr>`).join('')}
+</table></div>
     <div><h3>指標監測</h3><table class="t">${M.map(x => `<tr><td class="nowrap">${x.id}</td><td>${esc(x.name)}<div class="small muted">${esc(x.formula)}</div></td><td class="nowrap">${thrText(x)}</td><td class="nowrap"><b style="color:${x.ok === false ? 'var(--bad)' : 'inherit'}">${fmtV(x)}</b></td></tr>`).join('')}</table></div></div></details>`; }).join('')}`;
 };
 ROUTES.after_qimonth = () => {
   $('#qmSel').addEventListener('change', e => { qiMonth = e.target.value; refresh(); });
-  $$('.qmIn').forEach(i => i.addEventListener('change', () => { const key = `${i.dataset.no}|${i.dataset.m}`; const o = DB.settings.qiOverride || {}; o[key] = Object.assign({}, o[key], { [i.dataset.k]: +i.value }); setKV('settings', 'qiOverride', o); toast('已人工校正，監測值已重新計算'); refresh(); }));
+  $$('.qmIn').forEach(i => i.addEventListener('change', () => { const key = `${i.dataset.no}|${i.dataset.m}`; const o = DB.settings.qiOverride || {}; o[key] = Object.assign({}, o[key]); if (i.value === '') delete o[key][i.dataset.k]; else o[key][i.dataset.k] = +i.value; setKV('settings', 'qiOverride', o); toast(i.value === '' ? '已還原系統計算值' : '已人工校正，監測值已重新計算（清空欄位可還原）'); refresh(); }));
 };
 ACT.qmDone = el => { const o = DB.settings.qiMonthDone || {}; o[el.dataset.m] = { by: currentUser(), date: today() }; setKV('settings', 'qiMonthDone', o); toast('已確認本月指標報表'); refresh(); };
 
@@ -3213,16 +3306,16 @@ const PDCA_HINT = {
 };
 function pdcaAuto(ind, q) {
   const [f, t] = quarterRange(q), pq = prevQuarter(q), cur = qiCompute(ind, f, t), prev = qiCompute(ind, ...quarterRange(pq)), m0 = cur.M[0], p0 = prev.M[0];
-  const months = [0, 1, 2].map(i => { const d = new Date(f + 'T00:00:00'); d.setMonth(d.getMonth() + i); return ymd(d).slice(0, 7); }).filter(m => m <= today().slice(0, 7));
+  const months = [0, 1, 2].map(i => { const d0 = new Date(f + 'T00:00:00'); return ymd(new Date(d0.getFullYear(), d0.getMonth() + i, 1)).slice(0, 7); }).filter(m => m <= today().slice(0, 7));
   const mm = months.map(m => qiCompute(ind, ...monthRange(m)));
   const qLabel = `${+q.slice(0, 4) - 1911} 年 ${(+q.slice(-1) - 1) * 3 + 1} 至 ${+q.slice(-1) * 3} 月`;
-  const cnt = (ind.no === 5 ? cur.D.uT : cur.D.t ?? cur.D.newT ?? cur.D.rp ?? cur.D.slip) || 0;
-  const problem = `${qLabel}${ind.name.replace('指標監測', '')}${ind.no === 3 ? `約束人數 N=${cur.D.rp}` : `人次 N=${cnt}`}，${m0.name}為 ${fmtV(m0)}，${m0.ok === false ? `超過設定閾值 ${thrText(m0)}` : `未超過設定閾值 ${thrText(m0)}`}。`;
+  const lbl = (ind.data.find(d => d[0] === ind.main) || [, '件數'])[1].replace(/^當月/, '');
+  const problem = `${qLabel}${lbl.includes(ind.name.replace('指標監測', '')) ? '' : ind.name.replace('指標監測', '')}${lbl} N=${cur.D[ind.main] || 0}，${m0.name}為 ${fmtV(m0)}，${m0.op && m0.thr !== '' ? (m0.ok === false ? `超過設定閾值 ${thrText(m0)}` : `未超過設定閾值 ${thrText(m0)}`) : '尚未設定閾值'}。`;
   let cause = '';
-  if (ind.cat) { const tot = ind.cat.opts.reduce((s, o, i) => s + cur.D['c' + i], 0) || 1; cause = ind.cat.opts.map((o, i) => [o, cur.D['c' + i]]).filter(x => x[1]).map(([o, n], i) => `${i + 1}. ${o}人次 n=${n}（${(n / tot * 100).toFixed(1)}%）。`).join('\n'); }
+  if (ind.cause) { const tot = ind.cause.reduce((s, [k]) => s + (cur.D[k] || 0), 0) || 1; cause = ind.cause.filter(([k]) => cur.D[k]).map(([k, o], i) => `${i + 1}. ${o} n=${cur.D[k]}（${(cur.D[k] / tot * 100).toFixed(1)}%）。`).join('\n'); }
   if (!cause) cause = cur.ev.map((e, i) => `${i + 1}. ${roc(e.date)} ${(e.cause || '原因待分析').slice(0, 40)}`).join('\n') || '本季無發生案件。';
-  const check = `1. ${months.map(m => +m.slice(5)).join('、')} 月分別為 ${mm.map(x => `${ind.no === 5 ? x.D.uT : (x.D.t ?? x.D.newT ?? x.D.rp ?? x.D.slip ?? 0)}（${fmtV(x.M[0])}）`).join('、')}，續監測。`;
-  return { A: thrText(m0), B: fmtV(p0), C: fmtV(m0), dA: m0.thr !== '' && m0.op ? (m0.v - m0.thr).toFixed(1) + m0.unit : '－', dB: (m0.v - p0.v).toFixed(1) + m0.unit, problem, cause, check, period: qLabel };
+  const check = `1. ${months.map(m => +m.slice(5)).join('、')} 月分別為 ${mm.map(x => `${x.D[ind.main] || 0}（${fmtV(x.M[0])}）`).join('、')}，續監測。`;
+  return { A: thrText(m0), B: fmtV(p0), C: fmtV(m0), dA: m0.thr !== '' && m0.op ? (m0.v - m0.thr).toFixed(2) + m0.unit : '－', dB: (m0.v - p0.v).toFixed(2) + m0.unit, problem, cause, check, period: qLabel };
 }
 ROUTES.qipdca = () => {
   const q = qiQ || prevQuarter(quarterOf(today())), P = ((DB.quarterly[q] || {}).pdca) || {};
@@ -3296,7 +3389,7 @@ PR.event = async function (id) {
 };
 function monthPage(ind, m) {
   const [f, t] = monthRange(m), { D, M } = qiCompute(ind, f, t);
-  const rows = ind.data.map(([k, l, ex]) => [l, D[k], ex ? `${ex}<br>${D.pdEx}` : '']).concat(ind.cat ? ind.cat.opts.map((o, i) => [ind.cat.label.replace('%', o), D['c' + i], '']) : []);
+  const rows = ind.data.map(([k, l, ex]) => [l + (/^[A-Z]\d?$/.test(k) ? `(${k})` : ''), D[k], ex && D.pdEx !== '' ? `${ex}<br>${D.pdEx}` : '']);
   const n = Math.max(rows.length, M.length);
   return `<!--land--><div class="org">${esc(DB.settings.org || '')}</div><h1>指標監測月統計表-${ind.no}${ind.name}</h1><div class="meta"><span>年度：${+m.slice(0, 4) - 1911}　　月份：${+m.slice(5)}</span><span>監測人：＿＿＿＿＿</span></div>
     <table><tr><th colspan="4">資料收集</th><th colspan="6">指標監測</th></tr><tr><th style="width:4%">項次</th><th style="width:19%">品質管理項目</th><th style="width:5%">數值</th><th style="width:6%">排除因子</th><th style="width:5%">項次</th><th style="width:14%">監測項目</th><th style="width:30%">公式</th><th style="width:6%">閾值</th><th style="width:6%">監測值</th><th style="width:5%">備註</th></tr>
@@ -3429,7 +3522,7 @@ function vitalsSentence(rid) {
 function assessSentence(rid) { const la = latestAssess(rid), r = resById(rid); const recent = Object.values(la).filter(a => diffDays(a.date, today()) <= 30); return recent.length ? recent.map(a => narrative(a.type, a, r)).join('\n') : '近 30 天無評估。'; }
 function planSentence(rid) { const p = latestPlan(rid); return p && p.problems.length ? '照顧問題：' + p.problems.map((x, i) => `#${i + 1} ${x.problem}`).join('；') : '尚無照顧計畫。'; }
 function openNote(id, rid) {
-  const n = id ? DB.notes.find(x => x.id === id) : { rid: rid || (activeResidents().filter(inHouse)[0] || {}).id, date: today(), time: new Date().toTimeString().slice(0, 5), kind: myRole() === '護理人員' ? 'DAR' : '一般', disc: myRole(), handover: false };
+  const n = id ? DB.notes.find(x => x.id === id) : { rid: rid || '', date: today(), time: new Date().toTimeString().slice(0, 5), kind: myRole() === '護理人員' ? 'DAR' : '一般', disc: myRole(), handover: false };
   const body = () => `${tplPicker()}<div class="grid g3">${field({ key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === n.rid).map(r => [r.id, resLabel(r)]), req: true }, n.rid)}${field({ key: 'date', label: '日期', type: 'date' }, n.date)}${field({ key: 'time', label: '時間', type: 'time' }, n.time)}</div>
     <div class="chips">${['一般', 'DAR', 'SOAP'].map(k => `<button class="chip ${n.kind === k ? 'on' : ''}" data-act="noteKind" data-k="${k}">${k === 'DAR' ? 'DAR（資料／措施／反應）' : k === 'SOAP' ? 'SOAP' : '一般紀錄'}</button>`).join('')}</div>
     <div class="row small" style="margin-bottom:6px"><span class="muted">帶入：</span><button class="btn sm" data-act="noteIns" data-w="v">今日生命徵象</button><button class="btn sm" data-act="noteIns" data-w="a">最新評估摘要</button><button class="btn sm" data-act="noteIns" data-w="p">照顧計畫問題</button></div>
@@ -3448,7 +3541,7 @@ function openNote(id, rid) {
   $('#mbody').addEventListener('focusin', e => { if (e.target.tagName === 'TEXTAREA') window.__noteTA = e.target; });
 }
 ACT.newNote = () => openNote(); ACT.newNoteFor = el => openNote(null, el.dataset.id); ACT.editNote = el => openNote(el.dataset.id);
-ACT.delNote = el => { remove('notes', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delNote = el => { const id = el.dataset.id, x = DB.notes.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆照護紀錄？刪除後無法復原。')) return; logAccess('刪除照護紀錄', x.rid); remove('notes', id); closeModal(); refresh(); toast('已刪除'); };
 ACT.noteKind = el => { const D = window.__noteDraft; Object.assign(D.n, readForm(D.F(), $('#mbody'), true)); D.n.kind = el.dataset.k; $('#mbody').innerHTML = D.body(); };
 ACT.noteIns = el => {
   const D = window.__noteDraft, rid = $('#mbody [name=rid]').value;
@@ -3487,7 +3580,7 @@ ROUTES.batch = () => {
   return `<div class="hd"><div><h1>批次登錄</h1><p class="sub">醫師巡診、藥師評估、家屬電訪、體重、疫苗一次登錄全部住民。系統會先勾好「到期」的住民。</p></div></div>
   <div class="chips">${Object.keys(BATCH_TYPES).map(k => `<button class="chip ${k === batchType ? 'on' : ''}" data-act="batchType" data-k="${esc(k)}">${esc(k)}</button>`).join('')}</div>
   <div class="card"><div class="grid g3"><label class="f">日期<input type="date" id="bDate" value="${d}"></label>${t.kind === 'contact' ? `<label class="f" style="grid-column:span 2">共同內容<input id="bCommon" value="${esc(t.def)}"></label>` : ''}</div>
-  ${t.kind === 'vaccine' ? '<div class="checks"><label><input type="checkbox" id="bNote" checked> 同時寫入護理紀錄（施打疫苗範本，已接種者）</label></div>' : ''}
+  ${t.kind === 'vaccine' ? '<div class="checks"><label><input type="checkbox" id="bNote"> 同時寫入護理紀錄（施打疫苗範本，已接種者）</label><label>同意者 <select id="bConsent" style="padding:4px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--ink)"><option>經家屬同意</option><option>經住民本人同意</option></select></label><label>評估醫師 <input id="bDoc" value="巡診醫師" style="width:110px;padding:4px;border:1px solid var(--line);border-radius:6px"></label></div>' : ''}
   ${t.kind !== 'weight' ? '<div class="row" style="margin-bottom:8px"><button class="btn sm" data-act="bPick" data-v="all">全選</button><button class="btn sm" data-act="bPick" data-v="due">只選到期</button><button class="btn sm" data-act="bPick" data-v="none">全不選</button></div>' : '<p class="small muted">直接輸入本次體重，Enter 跳下一位；30 天內變化 ≥ 5% 會標紅（B19）。</p>'}
   <div class="tw"><table class="t" id="bTable">${t.kind === 'weight' ? '<tr><th>住民</th><th>上次</th><th>本次 kg</th><th>變化</th></tr>' : `<tr><th></th><th>住民</th><th>${t.kind === 'contact' ? '個別內容' : '狀態'}</th></tr>`}${res.map(row).join('')}</table></div>
   <div class="row" style="margin-top:12px"><span class="sp"></span><span id="bCount" class="small muted"></span><button class="btn pri" data-act="bSave">儲存</button></div></div>`;
@@ -3514,7 +3607,7 @@ ACT.bSave = () => {
     if (!tr.querySelector('[data-pick]').checked) return;
     if (t.kind === 'contact') { save('contacts', { rid, kind: batchType, date: d, content: tr.querySelector('[data-note]').value.trim() || $('#bCommon').value.trim(), with: '' }); n++; }
     else { const s = tr.querySelector('[data-vs]').value; save('vaccines', { rid, kind: t.v, date: d, refused: !!s, reason: s }); n++;
-      if (!s && $('#bNote') && $('#bNote').checked) save('notes', { rid, date: d, time: new Date().toTimeString().slice(0, 5), kind: '一般', title: '施打疫苗', disc: myRole(), handover: false, text: NOTE_TEMPLATES['施打疫苗'].text({ vac: t.v === '流感' ? '流感疫苗' : '新冠疫苗', doc: '巡診醫師', consent: '經家屬同意' }) }); }
+      if (!s && $('#bNote') && $('#bNote').checked) save('notes', { rid, date: d, time: new Date().toTimeString().slice(0, 5), kind: '一般', title: '施打疫苗', disc: myRole(), handover: false, text: NOTE_TEMPLATES['施打疫苗'].text({ vac: t.v === '流感' ? '流感疫苗' : '新冠疫苗', doc: $('#bDoc').value || '巡診醫師', consent: $('#bConsent').value }) }); }
   });
   if (!n) { toast('沒有選取任何住民', 'bad'); return; }
   logAccess(`批次登錄${batchType} ${n} 位`);
@@ -3736,13 +3829,14 @@ async function boot() {
   updateBrand(); setupSearch(); applyFontScale(); dashRole = !!ROLE_CATS[myRole()];
   window.addEventListener('hashchange', render);
   window.addEventListener('beforeunload', () => { if (Store.dirty.size) Store.flush(); });
+  if (!location.hash || location.hash === '#/' || location.hash === '#/dash') { const role = myRole(); if (role === '照顧服務員') location.hash = '#/daily'; else if (role === '社工人員') location.hash = '#/notes'; }
   render();
   const wantTrial = /[?&]trial\b/.test(location.search) || !DB.residents.length;
   if (wantTrial && await trialAvailable()) { history.replaceState(null, '', location.pathname + location.hash); openTrialLoader(true); }
   else if (!DB.settings.user) askUser(true);
   // 自動逾時鎖定（有密碼時，閒置 15 分鐘）
-  let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
-  ['click', 'keydown'].forEach(ev => document.addEventListener(ev, reset)); reset();
+  let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { if (modalDirty) { reset(); return; } await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
+  ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, reset)); reset();
 }
 async function bootCloud() {
   $('header.top').insertAdjacentHTML('beforeend', '<span id="cloudStatus"></span>');

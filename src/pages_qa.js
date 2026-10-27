@@ -3,46 +3,44 @@ function recentQuarters(n) { const out = []; let q = quarterOf(today()); for (le
 ROUTES.quality = (q) => {
   q = q || quarterOf(today());
   const [f, t] = quarterRange(q);
-  const months = [0, 1, 2].map(i => { const d = new Date(f + 'T00:00:00'); d.setMonth(d.getMonth() + i); return ymd(d).slice(0, 7); });
-  const ms = months.map(m => qualityStats(...monthRange(m)));
-  const qs = qualityStats(f, t);
-  const hist = recentQuarters(4).reverse().map(x => [x, qualityStats(...quarterRange(x))]);
-  const Q = DB.quarterly[q] || { analysis: {} };
-  const fmt = (row, a, b) => { const inner = row.rate === null ? row.n : `${row.n}<div class="small muted">${row.rate.toFixed(2)} ${row.unit}</div>`; return row.n ? `<button class="qcell" data-act="qDrill" data-k="${esc(row.key)}" data-f="${a}" data-t="${b}" title="點開看是哪幾件">${inner}</button>` : inner; };
-  return `${qiTabs('quality')}<div class="hd"><div><h1>品質指標</h1><p class="sub">由事件登錄、約束、體重、評估資料自動計算。人日數 = 每位住民在機構的天數加總。每季完成分析檢討即符合 B12–B18「定期（每季）分析」。</p></div><span class="sp"></span>
+  const months = [0, 1, 2].map(i => { const d0 = new Date(f + 'T00:00:00'); return ymd(new Date(d0.getFullYear(), d0.getMonth() + i, 1)).slice(0, 7); });
+  const hist = recentQuarters(4).reverse();
+  const P = ((DB.quarterly[q] || {}).pdca) || {};
+  const doneN = QI.filter(i => P[i.no] && P[i.no].done).length;
+  const rows = QI.map(ind => {
+    const mm = months.map(m => m <= today().slice(0, 7) ? qiCompute(ind, ...monthRange(m)) : null), qq = qiCompute(ind, f, t), hh = hist.map(x => qiCompute(ind, ...quarterRange(x)).M[0].v), mx = Math.max(...hh, +qq.M[0].thr || 0, 0.0001);
+    const cell = (c, a, b) => { if (!c) return '<span class="muted small">－</span>'; const m = c.M[0], n = c.D[ind.main] || 0; const inner = `${n}<div class="small" style="color:${m.ok === false ? 'var(--bad)' : 'var(--muted)'}">${fmtV(m)}</div>`; return n ? `<button class="qcell" data-act="qDrill" data-k="${ind.no}" data-f="${a}" data-t="${b}" title="點開看是哪幾件">${inner}</button>` : inner; };
+    return `<tr><td><b>${ind.no}. ${esc(ind.name.replace('指標監測', ''))}</b><div class="small muted">${esc(qq.M[0].name)}｜閾值 ${thrText(qq.M[0])}</div></td>${mm.map((c, k) => `<td>${cell(c, ...monthRange(months[k]))}</td>`).join('')}<td>${cell(qq, f, t)}</td>
+      <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${hh.map((v, k) => `<button data-act="qGo" data-q="${hist[k]}" title="${hist[k]}：${v.toFixed(2)}（點一下切換）" style="width:18px;padding:0;border:0;cursor:pointer;height:${Math.max(3, v / mx * 28)}px;background:${hist[k] === q ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></button>`).join('')}</div></td>
+      <td>${P[ind.no] && P[ind.no].done ? '<span class="chip ok">PDCA 完成</span>' : '<span class="chip warn">待填</span>'}</td></tr>`;
+  }).join('');
+  const rd = residentDays(f, t);
+  return `${qiTabs('quality')}<div class="hd"><div><h1>品質指標</h1><p class="sub">與月統計表、PDCA 使用同一套公式（人日數已扣除住院保留床）。數字可以點開看是哪幾件；右邊趨勢長條點一下切換季度。</p></div><span class="sp"></span>
     <select id="qSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${recentQuarters(8).map(x => `<option value="${x}"${x === q ? ' selected' : ''}>${x.replace('-Q', ' 年第 ')} 季${x === quarterOf(today()) ? '（本季）' : ''}</option>`).join('')}</select></div>
-  <p class="small muted" style="margin-top:-6px">數字可以點開看是哪幾件；右邊趨勢長條點一下切換季度。</p>
-  <div class="grid g4"><div class="kpi"><div class="n">${qs.rd}</div><div class="l">本季住民人日數</div></div><div class="kpi"><div class="n">${qs.census}</div><div class="l">平均每日在住</div></div>
-    <div class="kpi ${Q.done ? 'ok' : 'warn'}"><div class="n">${Q.done ? '已完成' : '未完成'}</div><div class="l">本季分析檢討</div></div><div class="kpi"><div class="n">${DB.events.filter(e => e.date >= f && e.date <= t).length}</div><div class="l">本季事件總數</div></div></div>
-  <div class="card" style="margin-top:16px;padding:0"><div class="tw"><table class="t"><tr><th>指標</th>${months.map(m => `<th>${+m.slice(5)} 月</th>`).join('')}<th>本季</th><th>近 4 季趨勢</th></tr>
-  ${qs.rows.map((row, i) => { const h = hist.map(([, s]) => s.rows[i].rate ?? s.rows[i].n); const mx = Math.max(...h, 0.0001);
-    return `<tr><td>${esc(row.key)} ${refChip(row.ref)}</td>${ms.map((s, mi) => `<td>${fmt(s.rows[i], ...monthRange(months[mi]))}</td>`).join('')}<td><b>${fmt(row, f, t)}</b></td>
-    <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${h.map((v, j) => `<button data-act="qGo" data-q="${hist[j][0]}" title="${hist[j][0]}：${typeof v === 'number' ? v.toFixed(2) : v}（點一下切換到這一季）" style="width:18px;padding:0;border:0;cursor:pointer;height:${Math.max(3, v / mx * 28)}px;background:${hist[j][0] === q ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></button>`).join('')}</div></td></tr>`; }).join('')}</table></div></div>
-  <div class="banner info">每季的正式分析請到「<a href="#/qipdca">季 PDCA</a>」填寫 PDCA 改善報告單，每月報表在「<a href="#/qimonth">月統計表</a>」。</div><h2>本季分析與改善方案（簡式）</h2><p class="sub">逐項填寫後按「完成本季分析」。建議於品質會議中討論並記錄於「會議與活動」。</p>
-  <div id="qForm">${qs.rows.filter(r => r.rate !== null || r.key.startsWith('管路成功')).map(row => { const a = (Q.analysis || {})[row.key] || {}; const evs = DB.events.filter(e => row.key.startsWith(e.type) && e.date >= f && e.date <= t);
-    return `<div class="card"><div class="row"><b>${esc(row.key)}</b>${refChip(row.ref)}<span class="sp"></span><span class="chip">${row.n} 件</span></div>
-    ${evs.length ? `<div class="small muted" style="margin:6px 0">${evs.map(e => `${roc(e.date)} ${esc(resById(e.rid) ? resById(e.rid).name : '')}：${esc((e.cause || '未分析').slice(0, 30))}`).join('；')}</div>` : ''}
-    <div class="grid g2"><label class="f">分析（趨勢、共同原因）<textarea data-qk="${esc(row.key)}" data-qf="a">${esc(a.a || '')}</textarea></label><label class="f">檢討與改善方案<textarea data-qk="${esc(row.key)}" data-qf="b">${esc(a.b || '')}</textarea></label></div></div>`; }).join('')}</div>
-  <div class="row"><button class="btn" data-act="qSave" data-q="${q}">暫存</button><button class="btn pri" data-act="qDone" data-q="${q}">完成本季分析</button><button class="btn" data-act="printQuarter" data-q="${q}">列印季報告</button></div>`;
+  <div class="grid g4"><div class="kpi"><div class="n">${rd}</div><div class="l">本季住民人日數</div></div><div class="kpi"><div class="n">${DB.events.filter(e => e.date >= f && e.date <= t).length}</div><div class="l">本季事件總數</div></div>
+    <button class="kpi ${doneN === QI.length ? 'ok' : 'warn'}" data-act="go" data-to="qipdca"><div class="n">${doneN}/${QI.length}</div><div class="l">PDCA 完成 ›</div></button>
+    <button class="kpi" data-act="go" data-to="qimonth"><div class="n">${Object.keys(DB.settings.qiMonthDone || {}).filter(m => months.includes(m)).length}/3</div><div class="l">本季月統計表已確認 ›</div></button></div>
+  <div class="card" style="margin-top:16px;padding:0"><div class="tw"><table class="t"><tr><th>指標（主要監測項目）</th>${months.map(m => `<th>${+m.slice(5)} 月</th>`).join('')}<th>本季</th><th>近 4 季</th><th>本季 PDCA</th></tr>${rows}</table></div></div>
+  <div class="row"><button class="btn" data-act="qpPrintAll" data-q="${q}">列印／Word：本季全部 PDCA</button><button class="btn" data-act="qmPrint" data-m="${months.filter(m => m <= today().slice(0, 7)).pop()}">列印／Word：最近一個月月統計表</button></div>`;
 };
+ROUTES.after_quality = () => { $('#qSel').addEventListener('change', e => go('quality/' + e.target.value)); };
 const QKEY_TYPE = { '跌倒': ['跌倒'], '壓力性損傷（機構內新發生）': ['壓力性損傷'], '感染': ['感染'], '非計畫性住院': ['非計畫性住院'], '非計畫性體重改變': ['非計畫性體重改變'], '管路滑脫／自拔': ['管路滑脫／自拔'], '管路成功移除': ['管路移除'] };
 ACT.qGo = el => go('quality/' + el.dataset.q);
 ACT.qDrill = el => {
-  const k = el.dataset.k, f = el.dataset.f, t = el.dataset.t; let html = '';
-  if (QKEY_TYPE[k]) {
-    const list = DB.events.filter(e => QKEY_TYPE[k].includes(e.type) && e.date >= f && e.date <= t).sort((a, b) => a.date.localeCompare(b.date));
-    html = `<table class="t"><tr><th>日期</th><th>住民</th><th>經過</th><th>分析</th><th></th></tr>${list.map(e => `<tr><td class="nowrap">${roc(e.date)}</td><td class="nowrap">${esc(resLabel(resById(e.rid)))}</td><td class="small">${esc((e.desc || '').slice(0, 60))}</td><td>${e.cause && e.action ? '<span class="chip ok">已分析</span>' : '<span class="chip bad">待分析</span>'}</td><td><button class="btn sm" data-act="qOpenEv" data-id="${e.id}">開啟</button></td></tr>`).join('')}</table>`;
-  } else if (k === '約束') {
+  const ind = QI.find(i => i.no === +el.dataset.k), f = el.dataset.f, t = el.dataset.t; let html = '';
+  if (ind.type) {
+    const list = qiCompute(ind, f, t).ev.sort((a, b) => a.date.localeCompare(b.date));
+    html = `<table class="t"><tr><th>日期</th><th>住民</th><th>經過</th><th>分析</th><th></th></tr>${list.map(e => `<tr><td class="nowrap">${roc(e.date)}</td><td class="nowrap">${esc(resLabel(resById(e.rid)))}</td><td class="small">${esc((e.desc || '').slice(0, 60))}</td><td>${e.cause && (e.improve || e.action) ? '<span class="chip ok">已分析</span>' : '<span class="chip bad">待分析</span>'}</td><td><button class="btn sm" data-act="qOpenEv" data-id="${e.id}">開啟</button></td></tr>`).join('')}</table>`;
+  } else if (ind.no === 3) {
     const list = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f));
     html = `<table class="t"><tr><th>住民</th><th>期間</th><th>目的</th></tr>${list.map(x => `<tr><td>${esc(resLabel(resById(x.rid)))}</td><td>${roc(x.startDate)}～${x.endDate ? roc(x.endDate) : '持續中'}</td><td>${esc((x.reasons || []).join('、'))}</td></tr>`).join('')}</table>`;
-  } else if (/疼痛/.test(k)) {
-    const list = DB.daily.filter(d => d.date >= f && d.date <= t && +d.pain >= 4).sort((a, b) => a.date.localeCompare(b.date));
+  } else if (ind.no === 8) {
+    const list = DB.daily.filter(d => d.date >= f && d.date <= t && +d.pain > 0).sort((a, b) => a.date.localeCompare(b.date));
     html = `<table class="t"><tr><th>日期</th><th>住民</th><th>疼痛分數</th></tr>${list.map(d => `<tr><td>${roc(d.date)}</td><td>${esc(resLabel(resById(d.rid)))}</td><td>${d.pain}</td></tr>`).join('')}</table>`;
-  } else html = '<p class="small muted">此指標由評估資料計算，請到住民個人頁查看評估紀錄。</p>';
-  openModal(`${k}｜${roc(f)}～${roc(t)}`, html, null);
+  }
+  openModal(`${ind.name}｜${roc(f)}～${roc(t)}`, html || '<p class="muted">無明細</p>', null);
 };
 ACT.qOpenEv = el => { closeModal(); openEvent(el.dataset.id); };
-ROUTES.after_quality = () => { $('#qSel').addEventListener('change', e => go('quality/' + e.target.value)); };
 function readQ(q) { const Q = DB.quarterly[q] || { analysis: {} }; Q.analysis = Q.analysis || {}; $$('#qForm textarea').forEach(t => { (Q.analysis[t.dataset.qk] = Q.analysis[t.dataset.qk] || {})[t.dataset.qf] = t.value; }); return Q; }
 ACT.qSave = el => { setKV('quarterly', el.dataset.q, readQ(el.dataset.q)); toast('已暫存'); };
 ACT.qDone = el => { const Q = readQ(el.dataset.q); const empty = Object.values(Q.analysis).filter(x => !x.a && !x.b).length; if (empty > 3) { toast(`還有 ${empty} 項未填寫分析`, 'bad'); return; } Q.done = true; Q.doneDate = today(); Q.by = currentUser(); setKV('quarterly', el.dataset.q, Q); toast('本季分析已完成'); refresh(); };
@@ -62,11 +60,28 @@ ROUTES.accred = () => {
   <div class="row" style="margin:14px 0"><div class="chips" style="margin:0">${SET.map(c => `<button class="chip ${c.cat === accOpen ? 'on' : ''}" data-act="accCat" data-c="${c.cat}">${c.cat}. ${c.name}</button>`).join('')}</div><span class="sp"></span><label class="small row" style="gap:4px"><input type="checkbox" data-act="accCore" ${accOnlyCore ? 'checked' : ''}> 只看${elder ? '一級必要項目' : '核心指標'}</label></div>
   ${all.filter(x => x.cat === accOpen && (!accOnlyCore || x.core)).map(x => { const ev = accredEvidence(x.code); const s = A[x.code] || {};
     return `<details class="acc-item" ${ev && ev[0] === 'bad' ? 'open' : ''}><summary><span class="code">${x.code}</span><span style="flex:1">${esc(x.title)} ${x.core ? `<span class="chip bad">${elder ? '一級必要' : '核心'}</span>` : ''}</span>${ev ? `<span class="chip ${ev[0]}">${ev[0] === 'ok' ? '佐證完整' : ev[0] === 'bad' ? '需補強' : ev[0] === 'warn' ? '注意' : '資訊'}</span>` : ''}${s.r ? `<span class="chip pri">自評 ${s.r}</span>` : ''}</summary>
-    <div class="body"><p>${esc(x.desc)}</p>${ev ? `<div class="banner ${ev[0] === 'ok' ? 'info' : ev[0]}" style="margin:6px 0">系統佐證：${esc(ev[1])}</div>` : '<p class="small muted">此項需以文件、現場察看佐證，請於備註記錄準備狀況與文件位置。</p>'}
+    <div class="body"><p>${esc(x.desc)}</p>${ev ? `<div class="banner ${ev[0] === 'ok' ? 'info' : ev[0]}" style="margin:6px 0">系統佐證：${esc(ev[1])}${ACC_MISS[x.auto] ? ` <button class="btn sm" data-act="accMiss" data-a="${x.auto}">看未達標住民</button>` : ''}</div>` : '<p class="small muted">此項需以文件、現場察看佐證，請於備註記錄準備狀況與文件位置。</p>'}
     <div class="row"><span class="small muted">自評</span><div class="rating">${['A', 'B', 'C', 'D', 'E'].map(g => `<button data-act="accRate" data-c="${x.code}" data-g="${g}" class="${s.r === g ? 'on' : ''}">${g}</button>`).join('')}</div></div>
     <label class="f" style="margin-top:8px">準備狀況／佐證文件位置<textarea data-accnote="${x.code}" placeholder="例：工作手冊第 3 章；114 年品質會議紀錄 4 份">${esc(s.note || '')}</textarea></label></div></details>`; }).join('')}`;
 };
 ROUTES.after_accred = () => { $$('[data-accnote]').forEach(t => t.addEventListener('change', () => { const c = t.dataset.accnote; setKV('accred', c, Object.assign({}, DB.accred[c], { note: t.value })); toast('已儲存備註'); })); };
+const ACC_MISS = {
+  family: { title: '本季尚未家屬電訪／會談', test: r => r.noFamily || DB.contacts.some(c => c.rid === r.id && c.kind === '家屬電訪／會談' && diffDays(c.date, today()) <= 92), batch: '家屬電訪／會談' },
+  doctor: { title: '期限內尚未醫師巡診', test: r => DB.contacts.some(c => c.rid === r.id && c.kind === '醫師巡診' && diffDays(c.date, today()) <= facType().doctor + 1), batch: '醫師巡診' },
+  pharm: { title: '近 3 個月尚未藥師評估', test: r => DB.contacts.some(c => c.rid === r.id && c.kind === '藥師評估' && diffDays(c.date, today()) <= 92), batch: '藥師評估' },
+  check: { title: '一年內尚未健康檢查', test: r => DB.contacts.some(c => c.rid === r.id && c.kind === '年度健康檢查' && diffDays(c.date, today()) <= 365), batch: '年度健康檢查' },
+  weight: { title: '近 1 個月尚未量體重', test: r => { const w = weightsOf(r.id).pop(); return w && diffDays(w.date, today()) <= 31; }, batch: '體重' },
+  b2: { title: '期限內評估不齊全', test: r => { const la = latestAssess(r.id); return CORE_SCALES.every(t => la[t] && diffDays(la[t].date, today()) <= scaleCycle(t) + 2); } },
+  vaccine: { title: '本季尚未接種流感或未註明原因', test: r => DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && diffDays(v.date, today()) < 300), batch: '流感疫苗' },
+  pain: { title: '尚未做疼痛評估', test: r => !!latestAssess(r.id).pain },
+};
+ACT.accMiss = el => {
+  const M = ACC_MISS[el.dataset.a], list = activeResidents().filter(inHouse).filter(r => !M.test(r));
+  openModal(`${M.title}（${list.length} 人）`, list.length ? `<table class="t">${list.map(r => `<tr><td>${esc(resLabel(r))}</td><td class="right"><a href="#/r/${r.id}" data-act="closeModal">開啟住民</a></td></tr>`).join('')}</table>` : '<p>全部達標。</p>', null,
+    { extraBtn: M.batch && list.length ? `<button class="btn pri" data-act="accBatch" data-b="${esc(M.batch)}">前往批次登錄</button>` : list.length ? '<button class="btn pri" data-act="accMatrix">開啟評估進度總表</button>' : '' });
+};
+ACT.accBatch = el => { batchType = el.dataset.b; closeModal(); go('batch'); };
+ACT.accMatrix = () => { closeModal(); go('matrix'); };
 ACT.accCat = el => { accOpen = el.dataset.c; refresh(); };
 ACT.accCore = () => { accOnlyCore = !accOnlyCore; refresh(); };
 ACT.accRate = el => { const c = el.dataset.c; const cur = DB.accred[c] || {}; setKV('accred', c, Object.assign({}, cur, { r: cur.r === el.dataset.g ? '' : el.dataset.g })); refresh(); };
@@ -127,7 +142,7 @@ ACT.saveUser = el => { const o = readForm([{ key: 'name', label: '姓名', req: 
 ACT.saveStaff = el => { setKV('settings', 'staff', readForm([{ key: 'total', type: 'number' }, { key: 'flu', type: 'number' }, { key: 'covid', type: 'number' }], el.closest('.card'))); toast('已儲存'); };
 ACT.setPw = async () => { const a = $('#pw1').value, b = $('#pw2').value; if (a.length < 6) { toast('密碼至少 6 碼', 'bad'); return; } if (a !== b) { toast('兩次輸入不一致', 'bad'); return; } await Store.setPassword(a); toast('已加密，下次開啟需輸入密碼'); refresh(); };
 ACT.clearPw = () => confirmBox('移除密碼後資料將以未加密方式存放，確定？', async () => { await Store.setPassword(''); toast('已移除密碼'); refresh(); });
-ACT.lockNow = () => { location.reload(); };
+ACT.lockNow = async () => { await Store.flush(); location.reload(); };
 ACT.theme = el => { const t = el.dataset.t; if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; try { localStorage.setItem('ltc-theme', t); } catch (e) {} toast('已切換外觀'); };
 ACT.exportData = async () => {
   const withPh = $('#bkPhotos') ? $('#bkPhotos').checked : true;

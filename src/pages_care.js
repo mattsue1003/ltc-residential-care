@@ -31,7 +31,7 @@ ROUTES.assess = (rid, type) => {
     + (sc.extra ? `<div class="card">${formHTML(sc.extra, S.extra, 3)}</div>` : '')}
     ${sc.form ? '' : '<p class="small muted">小技巧：可用鍵盤數字鍵 1、2、3… 依序作答，答完自動跳下一題。</p>'}<label class="f">備註<textarea id="asNote" placeholder="觀察重點、特殊狀況">${esc(S.note)}</textarea></label></div>
   <div class="scorebar"><div><div class="small muted">即時計分</div><div class="big" id="asScore">－</div></div><div id="asLevel"></div><span class="sp"></span>
-    ${queue ? `<span class="small muted">批次：剩 ${queue.length} 位</span>` : ''}${chain && chain.length ? `<span class="small muted">接著：${chain.map(t => SCALES[t].short).join('、')}</span>` : ''}<button class="btn" data-act="go" data-to="r/${r.id}">取消</button><button class="btn pri" data-act="saveAssess">${queue && queue.length ? '儲存並下一位' : chain && chain.length ? '儲存並下一個量表' : '儲存評估'}</button></div>
+    ${queue ? `<span class="small muted">批次：剩 ${queue.length} 位</span>` : ''}${chain && chain.length ? `<span class="small muted">接著：${chain.map(t => SCALES[t].short).join('、')}</span>` : ''}<button class="btn" data-act="cancelAssess" data-to="r/${r.id}">取消</button><button class="btn pri" data-act="saveAssess">${queue && queue.length ? '儲存並下一位' : chain && chain.length ? '儲存並下一個量表' : '儲存評估'}</button></div>
   <div id="asResult"></div>`;
 };
 ROUTES.after_assess = (rid, type) => {
@@ -44,14 +44,15 @@ ROUTES.after_assess = (rid, type) => {
     else if (type === 'mna' && S.extra.calf && !S.extra.weight) { const v = +S.extra.calf < 31 ? 0 : 3; const rb = $(`input[name=q5][value="${v}"]`); if (rb) { rb.checked = true; S.answers[5] = v; } }
     S.note = $('#asNote').value; S.date = $('#asDate').value;
     const { score, level } = scoreScale(type, S.answers, S.extra);
-    const done = answeredAll(type, S.answers);
+    const done = answeredAll(type, S.answers, S.extra);
     $('#asScore').textContent = sc.form ? '－' : (done ? score : `${score}…`) + (sc.form ? '' : sc.errorBased ? ' 錯' : ` / ${sc.max}`);
     $('#asLevel').innerHTML = sc.form ? (S.extra.adapt && S.extra.mood && S.extra.family ? lvChip(level[0], level[1]) : '<span class="small muted">請填寫適應、情緒、家庭支持</span>') : done ? lvChip(level[0], level[1]) : `<span class="small muted">尚有 ${sc.items.filter((_, i) => S.answers[i] === undefined).length} 題未答</span>`;
     $$('.q').forEach(q => q.classList.remove('miss'));
   };
   $('#asForm').addEventListener('change', upd); $('#asForm').addEventListener('input', upd); upd();
 };
-ACT.startAssess = () => go(`assess/${$('#asRes').value}/${$('#asType').value}`);
+ACT.startAssess = () => { window.__batch = null; window.__chain = null; assessState = null; go(`assess/${$('#asRes').value}/${$('#asType').value}`); };
+ACT.cancelAssess = el => { window.__batch = null; window.__chain = null; assessState = null; go(el.dataset.to); };
 ACT.copyPrev = () => { const p = assessState.prev; if (!p) return; assessState.answers = Object.assign({}, p.answers); assessState.extra = Object.assign({}, p.extra); refresh(); toast('已帶入上次答案，請確認有變化的項目'); };
 ACT.batchAssess = el => {
   const t = el.dataset.t; const list = (window.__rem || []).filter(r => r.cat === '評估' && r.act.split(':')[2].split(',').includes(t)).map(r => r.rid); window.__chain = null;
@@ -60,10 +61,12 @@ ACT.batchAssess = el => {
 };
 ACT.saveAssess = () => {
   const S = assessState, sc = SCALES[S.type], r = resById(S.rid);
-  if (!sc.form && !answeredAll(S.type, S.answers)) { sc.items.forEach((_, i) => { if (S.answers[i] === undefined) $(`.q[data-q="${i}"]`).classList.add('miss'); }); const m = $('.q.miss'); if (m) m.scrollIntoView({ block: 'center' }); toast('還有題目未作答（黃框）', 'bad'); return; }
+  if (!sc.form && !answeredAll(S.type, S.answers, S.extra)) { sc.items.forEach((_, i) => { if (S.answers[i] === undefined) $(`.q[data-q="${i}"]`).classList.add('miss'); }); const m = $('.q.miss'); if (m) m.scrollIntoView({ block: 'center' }); toast('還有題目未作答（黃框）', 'bad'); return; }
   if (sc.form && !readForm(sc.fields, $('#asForm'))) return;
+  if (!S.date) { toast('請填寫評估日期', 'bad'); return; }
   if (S.date > today()) { toast('評估日期不可晚於今天', 'bad'); return; }
-  const { score, level } = scoreScale(S.type, S.answers, S.extra);
+  let { score, level } = scoreScale(S.type, S.answers, S.extra);
+  if (S.type === 'gds' && S.extra && S.extra.na && !sc.items.every((_, i) => S.answers[i] !== undefined)) { score = null; level = ['無法施測：' + S.extra.na, 'warn']; }
   const a = save('assessments', { rid: S.rid, type: S.type, date: S.date, answers: Object.assign({}, S.answers), extra: Object.assign({}, S.extra), score, level: level[0], cls: level[1], note: S.note });
   if (S.type === 'mna' && S.extra.weight && !DB.weights.some(w => w.rid === S.rid && w.date === S.date)) save('weights', { rid: S.rid, date: S.date, kg: +S.extra.weight });
   const n = narrative(S.type, a, r);
@@ -173,7 +176,7 @@ function eventTable(list, showRes) {
 }
 ACT.evType = el => { evType = el.dataset.t; refresh(); };
 function openEvent(id, rid, type) {
-  const e = eventDefaults(id ? DB.events.find(x => x.id === id) : { id: uid(), _new: true, rid, type: type || '跌倒', date: today(), time: new Date().toTimeString().slice(0, 5), status: '追蹤中' });
+  const e = eventDefaults(id ? JSON.parse(JSON.stringify(DB.events.find(x => x.id === id))) : { id: uid(), _new: true, rid, type: type || '跌倒', date: today(), time: new Date().toTimeString().slice(0, 5), status: '追蹤中' });
   const draw = (t = e.type) => {
     const def = EVENT_TYPES[t] || { fields: [] };
     const base = [
@@ -210,10 +213,10 @@ function openEvent(id, rid, type) {
   });
   bindEv(); hydratePhotos($('#mbody'));
 }
-ACT.newEvent = () => openEvent(null, (activeResidents().filter(inHouse)[0] || {}).id);
+ACT.newEvent = () => openEvent(null, '');
 ACT.newEventFor = el => openEvent(null, el.dataset.id, el.dataset.t);
 ACT.editEvent = el => openEvent(el.dataset.id);
-ACT.delEvent = el => { remove('events', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delEvent = el => { const id = el.dataset.id, x = DB.events.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆事件？刪除後無法復原。')) return; logAccess('刪除事件', x.rid); remove('events', id); closeModal(); refresh(); toast('已刪除'); };
 
 /* ===== 約束管理 ===== */
 ROUTES.restraint = () => {
@@ -233,10 +236,11 @@ function restraintTable(list) {
     <td class="nowrap">${x.endDate ? '' : `<button class="btn sm pri" data-act="rsCheck" data-id="${x.id}">監測</button><button class="btn sm" data-act="rsEnd" data-id="${x.id}">解除</button>`}<button class="btn sm" data-act="rsEdit" data-id="${x.id}">開啟</button><button class="btn sm" data-act="printRestraint" data-id="${x.id}">同意書</button></td></tr>`; }).join('') || '<tr><td colspan="7" class="empty">無</td></tr>'}</table></div></div>`;
 }
 const RS_FIELDS = () => [
-  { key: 'rid', label: '住民', type: 'select', options: activeResidents().filter(inHouse).map(r => [r.id, resLabel(r)]), req: true },
+  { key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === (window.__rsRid || '')).map(r => [r.id, resLabel(r)]), req: true },
   { key: 'startDate', label: '開始日期', type: 'date', def: today(), req: true },
   { key: 'judge', label: '判斷依據', type: 'select', options: ['醫師診斷','護理人員專業判斷'], req: true }, { key: 'assessor', label: '評估人員', req: true, def: DB.settings.user ? DB.settings.user.name : '' },
-  { key: 'reasons', label: '約束目的（僅限以下，其餘皆屬不當約束）', type: 'checks', options: ['預防跌倒','預防自拔管路','行為紊亂','因治療需要'], req: true, wide: true },
+  { key: 'reasons', label: '約束目的（評鑑僅認可前四項，其餘屬不當約束）', type: 'checks', options: ['預防跌倒','預防自拔管路','行為紊亂','因治療需要','預防自傷','其他'], req: true, wide: true },
+  { key: 'hours', label: '每日約束持續時間', type: 'select', options: ['≤4 小時','>4 至 ≤8 小時','>8 至 ≤16 小時','>16 至 ≤24 小時'], req: true }, { key: 'form2', label: '同時使用 2 種以上約束', type: 'bool' },
   { key: 'alternatives', label: '約束前已嘗試的替代措施', type: 'checks', options: ['增加巡視與陪伴','調整床高與床邊防護墊','離床警示','管路固定／遮蔽／改變管路位置','轉移注意力與活動安排','處理疼痛、口渴、如廁等需求','調整環境（光線、噪音）','醫師檢視藥物','家屬陪伴'], req: true, wide: true },
   { key: 'assessNote', label: '個別化評估說明', type: 'textarea', wide: true, req: true },
   { key: 'form', label: '約束型態', type: 'select', options: ['手部約束（手套）','手腕約束帶','約束背心','腰部約束帶','輪椅安全帶','其他'], req: true },
@@ -246,7 +250,7 @@ const RS_FIELDS = () => [
   { key: 'consentDate', label: '同意書簽署日期（自簽訂日起 3 個月內有效）', type: 'date', def: today(), req: true },
 ];
 function openRestraint(id, rid) {
-  const x = id ? DB.restraints.find(y => y.id === id) : { rid, checks: [] };
+  const x = id ? DB.restraints.find(y => y.id === id) : { rid, checks: [] }; window.__rsRid = x.rid;
   const F = RS_FIELDS();
   openModal(id ? '約束評估紀錄' : '約束評估與同意', formHTML(F, x) + (x.checks && x.checks.length ? `<h3>監測紀錄（${x.checks.length}）</h3><div class="small" style="max-height:160px;overflow:auto">${x.checks.slice().reverse().map(c => `● ${roc(c.date)} ${c.time}　皮膚${c.skin}／循環${c.circ}　${c.release ? '已鬆綁' : ''} ${esc(c.note || '')}　<span class="muted">${esc(c.by)}</span>`).join('<br>')}</div>` : ''), () => {
     const o = readForm(F); if (!o) return false;
@@ -258,11 +262,11 @@ function openRestraint(id, rid) {
 function activeResident(rid) { return activeRestraint(rid); }
 function openRestraintCheck(id) {
   const x = DB.restraints.find(y => y.id === id); if (!x) return;
-  const F = [{ key: 'time', label: '時間', type: 'time', def: new Date().toTimeString().slice(0, 5), req: true }, { key: 'skin', label: '皮膚', type: 'select', options: ['完整','發紅','破損'], def: '完整', blank: false }, { key: 'circ', label: '末梢循環', type: 'select', options: ['正常','冰冷／發紺','腫脹'], def: '正常', blank: false },
+  const F = [{ key: 'date', label: '日期', type: 'date', def: today(), req: true }, { key: 'time', label: '時間', type: 'time', def: new Date().toTimeString().slice(0, 5), req: true }, { key: 'skin', label: '皮膚', type: 'select', options: ['完整','發紅','破損'], def: '完整', blank: false }, { key: 'circ', label: '末梢循環', type: 'select', options: ['正常','冰冷／發紺','腫脹'], def: '正常', blank: false },
     { key: 'release', label: '已鬆綁活動並滿足需求（進食、如廁、翻身）', type: 'bool', def: true }, { key: 'canStop', label: '評估可解除約束', type: 'select', options: ['否，仍需約束','是，今日解除'], def: '否，仍需約束', blank: false }, { key: 'note', label: '備註', wide: true }];
   openModal(`約束監測：${resLabel(resById(x.rid))}`, formHTML(F, {}), () => {
-    const o = readForm(F); if (!o) return false; o.date = today(); o.by = currentUser();
-    x.checks = x.checks || []; x.checks.push(o); if (o.canStop.startsWith('是')) { x.endDate = today(); x.endReason = '監測評估可解除'; }
+    const o = readForm(F); if (!o) return false; if (o.date > today()) { toast('日期不可晚於今天', 'bad'); return false; } o.by = currentUser();
+    x.checks = x.checks || []; x.checks.push(o); if (o.canStop.startsWith('是')) { x.endDate = o.date; x.endReason = '監測評估可解除'; }
     save('restraints', x); toast(x.endDate ? '已解除約束' : '已記錄監測');
   });
 }
@@ -289,6 +293,8 @@ function openMeeting(id, kind) {
   const F = [{ key: 'kind', label: '類別', type: 'select', options: MEETING_KINDS, req: true }, { key: 'date', label: '日期', type: 'date', req: true },
     { key: 'title', label: '主題', req: true, wide: true }, { key: 'participants', label: isGroup ? '參加成員' : '出席人員（職類）', wide: true, ph: isGroup ? '' : '主任、護理長、社工、職能治療師、營養師…' },
     ...(isGroup ? [{ key: 'count', label: '參加人數', type: 'number' }] : []),
+    ...(m.kind === '緊急災害應變演練' ? [{ key: 'drillTypes', label: '演練類型（評鑑 C11：每年至少複合型、夜間各 1 次）', type: 'checks', options: ['夜間演練', '複合型災害', '桌上模擬', '火災', '地震', '風災水災', '停電停水'], wide: true }] : []),
+    ...(m.kind === '跨專業個案討論' ? [{ key: 'disciplines', label: '參與職類（評鑑 B5：至少 3 種）', type: 'checks', options: ['護理', '社工', '職能治療', '物理治療', '營養', '藥師', '醫師', '照服員', '語言治療'], wide: true }] : []),
     ...(m.kind === '跨專業個案討論' ? [{ key: 'rids', label: '討論個案', type: 'checks', options: activeResidents().filter(inHouse).map(r => resLabel(r)), wide: true }] : []),
     { key: 'content', label: isGroup ? '活動內容與過程' : '討論內容', type: 'textarea', wide: true },
     { key: 'decisions', label: isGroup ? '量與質之評值成果' : '決議事項', type: 'textarea', wide: true },
@@ -300,4 +306,4 @@ function openMeeting(id, kind) {
 }
 ACT.newMeeting = el => openMeeting(null, el.dataset.k);
 ACT.editMeeting = el => openMeeting(el.dataset.id);
-ACT.delMeeting = el => { remove('meetings', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delMeeting = el => { const id = el.dataset.id, x = DB.meetings.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆會議／活動紀錄？刪除後無法復原。')) return; logAccess('刪除會議／活動紀錄', x.rid); remove('meetings', id); closeModal(); refresh(); toast('已刪除'); };

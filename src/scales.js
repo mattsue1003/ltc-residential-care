@@ -25,7 +25,7 @@ const SCALES = {
     ].map(q => [q[0], [[0,'答對'],[1,'答錯']]]),
     extra: [{ key: 'edu', label: '教育程度校正', type: 'select', options: ['國小（不校正）','未受教育（錯誤數可多 1）','高中以上（錯誤數需少 1）'] }],
     max: 10, unit: '錯',
-    adjust(raw, ex) { const e = ex && ex.edu || ''; return e.startsWith('未受') ? Math.max(0, raw - 1) : e.startsWith('高中') ? raw + 1 : raw; },
+    adjust(raw, ex) { const e = ex && ex.edu || ''; return e.startsWith('未受') ? Math.max(0, raw - 1) : e.startsWith('高中') ? Math.min(10, raw + 1) : raw; },
     level(s) { return s <= 2 ? ['心智功能完好','ok'] : s <= 4 ? ['輕度認知障礙','warn'] : s <= 7 ? ['中度認知障礙','bad'] : ['重度認知障礙','bad']; },
   },
   gds: {
@@ -129,9 +129,11 @@ function scoreScale(type, answers, extra) {
   const score = sc.adjust ? sc.adjust(raw, extra) : raw;
   return { score, level: sc.level(score) };
 }
-function answeredAll(type, answers) {
+function answeredAll(type, answers, extra) {
   const sc = SCALES[type];
   if (sc.form) return true;
+  if (type === 'gds' && extra && extra.na) return true;
+  if (type === 'pain' && extra && extra.nrs !== undefined && extra.nrs !== '') return true;
   return sc.items.every((_, i) => answers[i] !== undefined && answers[i] !== null && answers[i] !== '');
 }
 

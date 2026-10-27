@@ -67,15 +67,16 @@ document.addEventListener('change', async e => {
 ACT.viewPhoto = async el => {
   const p = DB.photos.find(x => x.id === el.dataset.id); if (!p) return;
   const d = await getPhoto(p.id);
-  const back = $('#modal').classList.contains('on') ? $('#modal').innerHTML : null, backSave = modalSave;
-  const restore = () => { if (back) { $('#modal').innerHTML = back; modalSave = backSave; const s = $(`.photos[data-owner="${p.owner}"]`); if (s) { s.outerHTML = photoStrip(p.owner); hydratePhotos(); } } else closeModal(); };
-  $('#modal').classList.add('on');
-  $('#modal').innerHTML = `<div class="box"><h2>照片｜${roc(p.date)}</h2><img src="${d}" style="max-width:100%;border-radius:8px" alt="">
+  const ov = document.createElement('div'); ov.id = 'phView'; ov.className = 'phview';
+  ov.innerHTML = `<div class="box"><h2 style="margin-top:0">照片｜${roc(p.date)}</h2><img src="${d}" style="max-width:100%;border-radius:8px" alt="">
     <label class="f">說明<input id="phCap" value="${esc(p.caption || '')}" placeholder="例：薦骨傷口 2×3 cm、中秋活動合照"></label>
     <div class="small muted">${p.w}×${p.h}・約 ${Math.round(p.size / 1024)} KB・${esc(p.by || '')}</div>
     <div class="foot"><button class="btn danger" id="phDel">刪除照片</button><span class="sp"></span><button class="btn pri" id="phOk">完成</button></div></div>`;
-  $('#phOk').onclick = () => { p.caption = $('#phCap').value; Store.mark('photos'); restore(); };
-  $('#phDel').onclick = async () => { await delPhoto(p.id); toast('已刪除照片'); restore(); if (!back) refresh(); };
+  document.body.appendChild(ov);
+  const done = () => { ov.remove(); const s = $(`.photos[data-owner="${p.owner}"]`); if (s) { s.outerHTML = photoStrip(p.owner); hydratePhotos(); } };
+  ov.querySelector('#phOk').onclick = () => { p.caption = ov.querySelector('#phCap').value; Store.mark('photos'); done(); };
+  ov.querySelector('#phDel').onclick = async () => { if (!confirm('確定刪除這張照片？')) return; await delPhoto(p.id); toast('已刪除照片'); done(); };
+  ov.addEventListener('keydown', e => { if (e.key === 'Escape') { e.stopPropagation(); done(); } });
 };
 async function photosPrintHTML(owner, title = '照片') {
   const ps = photosOf(owner); if (!ps.length) return '';
@@ -170,7 +171,7 @@ async function restoreBackup(txt, folderPhotos) {
   if (f.enc) {
     const pass = await promptPassword('這份備份有加密，請輸入當時設定的密碼'); if (pass === null) return;
     salt = unb64(f.salt); key = await Store.deriveKey(pass, salt);
-    try { const save = Store.key; Store.key = key; data = JSON.parse(await Store.dec(f.data)); Store.key = save; } catch (e) { toast('密碼錯誤，無法解開備份', 'bad'); return; }
+    const keep0 = Store.key; try { Store.key = key; data = JSON.parse(await Store.dec(f.data)); } catch (e) { toast('密碼錯誤，無法解開備份', 'bad'); return; } finally { Store.key = keep0; }
   }
   if (Cloud.on && !Cloud.isAdmin()) { toast('雲端版只有主任可以還原備份', 'bad'); return; }
   confirmBox(`將以備份（${f.__at ? new Date(f.__at).toLocaleString() : ''}，住民 ${(data.residents || []).length} 位、照片 ${(data.photos || []).length} 張）<b>覆蓋</b>這台電腦目前的資料，確定？`, async () => {
@@ -181,7 +182,7 @@ async function restoreBackup(txt, folderPhotos) {
     for (const p of DB.photos) {
       let d = emb[p.id];
       const fp = folderPhotos && folderPhotos[p.id];
-      if (!d && fp) d = fp.data || (fileKey ? await (async () => { const s = Store.key; Store.key = fileKey; const r = await Store.dec(fp.enc); Store.key = s; return r; })() : null);
+      if (!d && fp) d = fp.data || (fileKey ? await (async () => { const s = Store.key; try { Store.key = fileKey; return await Store.dec(fp.enc); } catch (e) { return null; } finally { Store.key = s; } })() : null);
       if (d) { const e2 = await Store.enc(d); await Store.rawSet('ph:' + p.id, e2); if (Cloud.on) Cloud.uploadPhoto(p.id, e2); }
     }
     await Store.flush(); if (Folder.handle) Folder.ok = true; toast('已還原'); updateBrand(); go('dash');

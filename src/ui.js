@@ -9,15 +9,24 @@ function toast(msg, cls = '') {
 }
 
 /* 彈窗：html 內容 + 按鈕；onSave 回傳 false 代表驗證失敗不關閉 */
-let modalSave = null;
+let modalSave = null, modalDirty = false;
 function openModal(title, html, onSave, opts = {}) {
-  modalSave = onSave;
+  modalSave = onSave; modalDirty = false;
   $('#modal').innerHTML = `<div class="box" role="dialog" aria-label="${esc(title)}"><h2>${esc(title)}</h2><div id="mbody">${html}</div>
     <div class="foot">${opts.extraBtn || ''}<span class="sp"></span><button class="btn" data-act="closeModal">${onSave ? '取消' : '關閉'}</button>${onSave ? `<button class="btn pri" data-act="modalSave">${opts.saveText || '儲存'}</button>` : ''}</div></div>`;
   $('#modal').classList.add('on');
+  enhanceResSelect();
   const first = $('#mbody input:not([type=hidden]):not([type=checkbox]):not([type=radio]), #mbody select, #mbody textarea'); if (first && !opts.noFocus) setTimeout(() => first.focus(), 30);
 }
-function closeModal() { $('#modal').classList.remove('on'); $('#modal').innerHTML = ''; modalSave = null; if (typeof cleanupOrphans === 'function') cleanupOrphans(); }
+function tryCloseModal() { if (modalDirty && modalSave && !confirm('表單有未儲存的內容，確定要關閉嗎？')) return; closeModal(); }
+function enhanceResSelect() {
+  const sel = $('#mbody select[name=rid]'); if (!sel || sel.options.length < 8 || sel.dataset.enh) return; sel.dataset.enh = 1;
+  const inp = document.createElement('input'); inp.placeholder = '輸入床號或姓名快速找住民'; inp.className = 'resfind';
+  sel.parentNode.insertBefore(inp, sel);
+  const all = [...sel.options].map(o => [o.value, o.text]);
+  inp.addEventListener('input', () => { const q = inp.value.trim(); const keep = sel.value; sel.innerHTML = all.filter(([v, t]) => !v || !q || t.includes(q)).map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join(''); const hits = all.filter(([v, t]) => v && q && t.includes(q)); sel.value = hits.length === 1 ? hits[0][0] : (all.some(([v]) => v === keep) && [...sel.options].some(o => o.value === keep) ? keep : sel.options[0].value); sel.dispatchEvent(new Event('change', { bubbles: true })); });
+}
+function closeModal() { modalDirty = false; $('#modal').classList.remove('on'); $('#modal').innerHTML = ''; modalSave = null; if (typeof cleanupOrphans === 'function') cleanupOrphans(); }
 
 /* 表單產生器 */
 function field(f, v) {
@@ -75,13 +84,15 @@ function refresh() { const y = window.scrollY; parseHash(); renderNav(); const f
 
 /* 行為分派 */
 const ACT = {
-  closeModal, modalSave() { if (modalSave && modalSave() !== false) { closeModal(); refresh(); } },
+  closeModal: tryCloseModal, modalSave() { if (modalSave && modalSave() !== false) { closeModal(); refresh(); } },
 };
 document.addEventListener('click', e => {
   const a = e.target.closest('[data-act]'); if (!a) return;
   const fn = ACT[a.dataset.act]; if (fn) { e.preventDefault(); fn(a, e); }
 });
-document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('on')) closeModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').classList.contains('on') && !$('#phView')) tryCloseModal(); });
+document.addEventListener('input', e => { if (e.target.closest && e.target.closest('#mbody')) modalDirty = true; });
+document.addEventListener('change', e => { if (e.target.closest && e.target.closest('#mbody')) modalDirty = true; });
 
 /* 共用小元件 */
 function lvChip(level, cls) { return `<span class="chip ${cls}">${esc(level)}</span>`; }

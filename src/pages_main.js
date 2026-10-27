@@ -9,7 +9,7 @@ const ROLE_CATS = {
 const ROLE_SCALES = { '社工人員': ['social','gds'], '營養師': ['mna'], '職能治療師': ['barthel','spmsq'], '物理治療師': ['barthel','morse'], '護理人員': ['barthel','morse','braden','pain','mna','spmsq'] };
 const ROLE_CONTACTS = { '社工人員': ['家屬電訪／會談'], '藥師': ['藥師評估'], '護理人員': ['醫師巡診','年度健康檢查'] };
 function roleFilter(r) {
-  const role = DB.settings.user && DB.settings.user.role; if (!dashRole || !role || role === '機構主任' || role === '行政人員') return true;
+  const role = myRole(); if (!dashRole || !role || role === '機構主任' || role === '行政人員') return true;
   const cats = ROLE_CATS[role] || []; if (!cats.includes(r.cat)) return false;
   if (r.cat === '評估' && ROLE_SCALES[role]) return ROLE_SCALES[role].some(s => r.act.split(':')[2].split(',').includes(s));
   if (r.cat === '訪視聯繫' && ROLE_CONTACTS[role]) return ROLE_CONTACTS[role].some(k => r.act.endsWith(':' + k));
@@ -48,7 +48,7 @@ ROUTES.dash = () => {
       <div style="padding:14px 16px 0"><div class="row"><h2 style="margin:0">待辦清單 <span class="muted small">${shown.length} 項${dashBadOnly ? '（只看逾期，再點一次逾期方塊可取消）' : ''}</span></h2><span class="sp"></span>
         ${u && ROLE_CATS[u.role] ? `<label class="small row" style="gap:4px"><input type="checkbox" data-act="toggleRole" ${dashRole ? 'checked' : ''}> 只看${esc(u.role.replace('人員', ''))}的工作</label>` : ''}</div>
       <div class="chips" style="margin-top:10px">${cats.map(c => `<button class="chip ${c === dashCat ? 'on' : ''}" data-act="dashCat" data-c="${esc(c)}">${esc(c)} ${c === '全部' ? rem.length : rem.filter(r => r.cat === c).length}</button>`).join('')}</div></div>
-      <div style="max-height:620px;overflow:auto">${shown.length ? shown.slice(0, 300).map(remRow).join('') : '<div class="empty">沒有待辦事項，做得好！</div>'}</div>
+      <div style="max-height:620px;overflow:auto">${shown.length ? groupRem(shown).slice(0, 300).map(x => x.group ? groupRow(x) : remRow(x)).join('') : '<div class="empty">沒有待辦事項，做得好！</div>'}</div>
     </div>
     <div>
       <div class="card"><div class="row"><h2 style="margin:0">交班摘要</h2><span class="sp"></span><button class="btn sm" data-act="printHandover">列印交班單</button></div>
@@ -62,6 +62,19 @@ ROUTES.dash = () => {
     </div>
   </div>`;
 };
+function groupRem(list) {
+  const out = [], g = {};
+  list.forEach(r => {
+    if (r.rid && (r.cat === '每日' || r.cat === '疫苗')) { const k = r.title.replace(/[\d]+(\/12)?\s*次/g, '#').replace(/（.*?）/g, ''); if (!g[k]) { g[k] = { group: true, title: k.replace('#', '不足'), cat: r.cat, ref: r.ref, level: r.level, act: r.act, items: [] }; out.push(g[k]); } g[k].items.push(r); if (r.level === 'bad') g[k].level = 'bad'; }
+    else out.push(r);
+  });
+  return out.map(x => x.group && x.items.length === 1 ? x.items[0] : x);
+}
+function groupRow(x) {
+  return `<div class="rem"><span class="dot ${x.level}"></span><span class="who"><span class="chip">${x.items.length} 人</span></span>
+    <span class="what">${esc(x.title)} ${refChip(x.ref)}<div class="due small">${x.items.slice(0, 6).map(r => esc((resById(r.rid) || {}).bed || '')).join('、')}${x.items.length > 6 ? '…' : ''}</div></span>
+    <button class="btn sm pri" data-act="doRem" data-a="${esc(x.act === 'daily' ? 'daily' : x.act)}">處理</button></div>`;
+}
 function remRow(r) {
   const res = r.rid ? resById(r.rid) : null;
   return `<div class="rem"><span class="dot ${r.level}"></span><span class="who">${res ? `<a href="#/r/${res.id}">${esc(resLabel(res))}</a>` : '<span class="muted">全機構</span>'}</span>
@@ -127,7 +140,8 @@ const RES_FIELDS = [
   { key: 'consciousness', label: '意識', type: 'select', options: ['清醒','嗜睡／混亂','意識不清'] },
   { key: 'contactName', label: '主要聯絡人' }, { key: 'contactRel', label: '關係' }, { key: 'contactPhone', label: '聯絡電話' },
   { key: 'doctor', label: '特約／主治醫師' },
-  { key: 'tube_ng', label: '留置鼻胃管', type: 'bool' }, { key: 'tube_foley', label: '留置導尿管', type: 'bool' }, { key: 'tube_trach', label: '氣切', type: 'bool' },
+  { key: 'height', label: '身高 (cm)', type: 'number' },
+  { key: 'tube_ng', label: '留置鼻胃管', type: 'bool' }, { key: 'tube_foley', label: '留置導尿管', type: 'bool' }, { key: 'tube_trach', label: '氣切', type: 'bool' }, { key: 'tube_cysto', label: '膀胱造廔', type: 'bool' }, { key: 'tube_colo', label: '結腸造廔', type: 'bool' },
   { key: 'incontinence', label: '有失禁之虞（需定時如廁）', type: 'bool' },
   { key: 'dnr', label: '已簽署 DNR', type: 'bool' }, { key: 'acp', label: '已完成預立醫療決定 (AD)', type: 'bool' },
   { key: 'noFamily', label: '無家屬（不需家屬電訪）', type: 'bool' }, { key: 'noGuardian', label: '無扶養義務人或法定代理人（長照法 §46）', type: 'bool' },
@@ -137,11 +151,11 @@ const RES_FIELDS = [
 ];
 function openRes(id) {
   const r = id ? resById(id) : {};
-  const obj = Object.assign({}, r, r.tubes ? { tube_ng: r.tubes.ng, tube_foley: r.tubes.foley, tube_trach: r.tubes.trach } : {});
+  const obj = Object.assign({}, r, r.tubes ? { tube_ng: r.tubes.ng, tube_foley: r.tubes.foley, tube_trach: r.tubes.trach, tube_cysto: r.tubes.cysto, tube_colo: r.tubes.colo } : {});
   openModal(id ? `編輯住民資料：${r.name}` : '新增住民（入住）', formHTML(RES_FIELDS, obj) + (id ? '' : '<p class="small muted">儲存後系統會自動排入「入住 72 小時評估」「照顧計畫」「1 個月內醫師診察」等待辦。</p>'), () => {
     const o = readForm(RES_FIELDS); if (!o) return false;
     if (DB.residents.some(x => x.id !== id && inHouse(x) && x.bed === o.bed)) { toast(`床號 ${o.bed} 已有在住住民`, 'bad'); return false; }
-    o.tubes = { ng: o.tube_ng, foley: o.tube_foley, trach: o.tube_trach }; delete o.tube_ng; delete o.tube_foley; delete o.tube_trach;
+    o.tubes = { ng: o.tube_ng, foley: o.tube_foley, trach: o.tube_trach, cysto: o.tube_cysto, colo: o.tube_colo }; ['tube_ng', 'tube_foley', 'tube_trach', 'tube_cysto', 'tube_colo'].forEach(k => delete o[k]);
     const saved = save('residents', Object.assign(r, o, { status: r.status || '在住' }));
     toast(id ? '已更新住民資料' : `已新增 ${saved.name}，入住評估已排入待辦`);
     if (!id) setTimeout(() => go(`r/${saved.id}`), 10);
@@ -152,9 +166,21 @@ ACT.editRes = el => openRes(el.dataset.id);
 ACT.dischargeRes = el => {
   const r = resById(el.dataset.id);
   const F = [{ key: 'status', label: '結案類別', type: 'select', options: ['退住','往生','轉介其他機構'], req: true }, { key: 'dischargeDate', label: '結案日期', type: 'date', req: true, def: today() }, { key: 'dischargeNote', label: '說明（物品點收、去向）', type: 'textarea', wide: true }];
-  openModal(`結案：${r.name}`, formHTML(F, {}), () => { const o = readForm(F); if (!o) return false; if (o.status === '轉介其他機構') o.status = '退住'; Object.assign(r, o); save('residents', r); toast('已結案'); });
+  openModal(`結案：${r.name}`, formHTML(F, {}), () => { const o = readForm(F); if (!o) return false; if (o.status === '轉介其他機構') o.status = '退住'; Object.assign(r, o); save('residents', r);
+    DB.restraints.filter(x => x.rid === r.id && !x.endDate).forEach(x => { x.endDate = o.dischargeDate; x.endReason = '住民結案'; save('restraints', x); });
+    toast('已結案'); });
 };
-ACT.hospRes = el => { const r = resById(el.dataset.id); r.status = r.status === '住院中' ? '在住' : '住院中'; save('residents', r); toast(r.status === '住院中' ? '已標記住院中，記得登錄非計畫性住院事件' : '已標記返回機構'); if (r.status === '住院中') openEvent(null, r.id, '非計畫性住院'); else refresh(); };
+ACT.hospRes = el => {
+  const r = resById(el.dataset.id);
+  if (r.status !== '住院中') { r.status = '住院中'; save('residents', r); toast('已標記住院中，請登錄住院收案單'); openEvent(null, r.id, '非計畫性住院'); return; }
+  const F = [{ key: 'returnDate', label: '返回機構日期', type: 'date', def: today(), req: true }];
+  openModal(`${r.name} 返回機構`, formHTML(F, {}, 1) + '<p class="small muted">會寫入最近一筆住院事件的「返回機構日期」，保留床人日數依此計算。</p>', () => {
+    const o = readForm(F); if (!o) return false; r.status = '在住'; save('residents', r);
+    const h = DB.events.filter(x => x.rid === r.id && x.type === '非計畫性住院' && !x.returnDate).sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (h) { h.returnDate = o.returnDate; (h.followups = h.followups || []).push({ date: o.returnDate, text: '出院返回機構' }); save('events', h); }
+    toast('已返回機構' + (h ? '，住院事件已記錄返回日期' : ''));
+  });
+};
 
 /* ===== 住民個人頁 ===== */
 ROUTES.after_r = () => hydratePhotos();
@@ -211,8 +237,8 @@ ACT.delAssess = el => confirmBox('確定刪除這筆評估？', () => { remove('
 /* 照顧計畫 */
 let planDraft = null;
 function resPlan(r) {
-  const plans = DB.plans.filter(p => p.rid === r.id).sort((a, b) => b.date.localeCompare(a.date));
-  if (!planDraft || planDraft.rid !== r.id) planDraft = plans[0] ? JSON.parse(JSON.stringify(plans[0])) : { rid: r.id, date: today(), problems: [], participants: '', familyDate: '', familyName: '' };
+  const plans = DB.plans.filter(p => p.rid === r.id).sort(planSort);
+  if (!planDraft || planDraft.rid !== r.id) planDraft = plans[0] ? Object.assign(JSON.parse(JSON.stringify(plans[0])), { date: today() }) : { rid: r.id, date: today(), problems: [], participants: '', familyDate: '', familyName: '' };
   const sug = suggestProblems(r, latestAssess(r.id)).filter(s => !planDraft.problems.some(p => p.key === s.key));
   return `<div class="grid g2" style="align-items:start">
   <div>
@@ -307,9 +333,9 @@ function openWeight(rid) {
   });
 }
 ACT.newWeightFor = el => openWeight(el.dataset.id);
-function contactFields(kind) {
+function contactFields(kind, cur) {
   return [
-    { key: 'rid', label: '住民', type: 'select', options: activeResidents().filter(inHouse).map(r => [r.id, resLabel(r)]), req: true },
+    { key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === cur).map(r => [r.id, resLabel(r)]), req: true },
     { key: 'kind', label: '類別', type: 'select', options: Object.keys(CONTACT_KINDS), req: true, def: kind },
     { key: 'date', label: '日期', type: 'date', def: today(), req: true }, { key: 'with', label: kind && kind.includes('家屬') ? '聯繫對象' : '執行人員／對象' },
     { key: 'content', label: '內容摘要', type: 'textarea', wide: true, req: true }, { key: 'followup', label: '後續追蹤事項', type: 'textarea', wide: true },
@@ -323,7 +349,7 @@ const CONTACT_PHRASES = {
 };
 function openContact(id, rid, kind) {
   const c = id ? DB.contacts.find(x => x.id === id) : { rid, kind };
-  const F = contactFields(c.kind);
+  const F = contactFields(c.kind, c.rid);
   const ph = CONTACT_PHRASES[c.kind] || [];
   openModal(id ? '編輯訪視聯繫紀錄' : '新增訪視聯繫紀錄', formHTML(F, c) + (ph.length ? `<div class="small muted">常用片語（點一下帶入）：</div><div class="chips">${ph.map(p => `<button class="chip" data-act="phrase" data-t="${esc(p)}">${esc(p)}</button>`).join('')}</div>` : ''), () => {
     const o = readForm(F); if (!o) return false; save('contacts', Object.assign(c, o)); toast('已儲存紀錄');
@@ -332,7 +358,7 @@ function openContact(id, rid, kind) {
 ACT.phrase = el => { const ta = $('#mbody textarea'); ta.value = (ta.value ? ta.value + '\n' : '') + el.dataset.t; ta.focus(); };
 ACT.newContactFor = el => openContact(null, el.dataset.id);
 ACT.editContact = el => openContact(el.dataset.id);
-ACT.delContact = el => { remove('contacts', el.dataset.id); closeModal(); refresh(); toast('已刪除'); };
+ACT.delContact = el => { const id = el.dataset.id, x = DB.contacts.find(y => y.id === id) || {}; if (!confirm('確定刪除這筆訪視聯繫紀錄？刪除後無法復原。')) return; logAccess('刪除訪視聯繫紀錄', x.rid); remove('contacts', id); closeModal(); refresh(); toast('已刪除'); };
 function openVaccine(id, rid) {
   const F = [{ key: 'kind', label: '疫苗', type: 'select', options: ['流感','肺鏈 PCV','肺鏈 PPV23','COVID-19','其他'], req: true }, { key: 'date', label: '日期', type: 'date', def: today(), req: true },
     { key: 'refused', label: '未接種（需註明原因）', type: 'bool' }, { key: 'reason', label: '未接種原因', type: 'select', options: ['對疫苗成分過敏','曾有嚴重不良反應','醫師評估暫緩','本人或家屬拒絕','急性疾病','其他'] }];

@@ -27,16 +27,16 @@ const NOTE_TEMPLATES = {
     text: (o) => j(`今${o.dept ? o.dept + '回診，' : ''}${o.src}${o.days ? '*' + o.days + '天' : ''}`, o.chronic && `慢籤*${o.chronic}回`, o.next && `下次回診時間於${roc(o.next)}`, o.adj, '依醫囑給予藥物使用', '續觀。'),
   },
   '施打疫苗': {
-    fields: [V('vac', '疫苗', 'select', ['流感及新冠疫苗', '流感疫苗', '新冠疫苗', '肺炎鏈球菌疫苗']), V('doc', '評估醫師', 'text', null, '巡診醫師'), V('consent', '同意', 'select', ['經家屬同意', '經住民本人同意'])],
+    fields: [V('vac', '疫苗', 'select', ['流感及新冠疫苗', '流感疫苗', '新冠疫苗', '肺炎鏈球菌疫苗（請另至疫苗頁登錄 PCV／PPV23）']), V('doc', '評估醫師', 'text', null, '巡診醫師'), V('consent', '同意', 'select', ['經家屬同意', '經住民本人同意'])],
     text: (o) => `${o.consent}，今由${o.doc}前來評估住民疫苗施打並與住民解釋施打疫苗之目的，現無不適之症狀，可以施打${o.vac}，衛教增加水份攝取，注意有無發燒及不適之症狀。`,
     link: { vaccine: true },
   },
   '跌倒': {
     fields: [V('time', '發現時間', 'time'), V('by', '發現者', 'select', ['巡視時發現', '照服員發現', '護理人員發現', '住民自行告知']), V('place', '地點', 'select', ['寢室床邊', '浴廁', '走廊', '餐廳／交誼廳', '活動室', '戶外']), V('how', '情境', 'select', ['自行下床', '自行拉開床欄下床', '自行解開約束下床', '如廁時', '推輪椅時重心不穩', '轉位時', '行走時', '坐在地上原因不明']),
-      V('lv', '意識', 'select', ['意識清楚', '意識混亂', '嗜睡', '情緒躁動']), V('inj', '傷勢', 'select', ['身體檢查無外傷或紅腫', '擦傷', '瘀青', '撕裂傷需縫合', '疑似骨折']), V('injd', '傷口描述', 'text', null, '', '例：左額頭 3*0.8 公分'),
+      V('lv', '意識', 'select', ['意識清楚', '意識混亂', '嗜睡', '情緒躁動']), V('inj', '傷勢', 'select', ['身體檢查無外傷或紅腫', '擦傷', '瘀青', '撕裂傷需縫合', '疑似骨折']), V('cause', '主要原因', 'select', ['住民健康情況', '治療或藥物反應', '環境中危險因子', '其他因素']), V('injd', '傷口描述', 'text', null, '', '例：左額頭 3*0.8 公分'),
       V('pain', '疼痛', 'select', ['無疼痛不適之主訴', '主訴疼痛']), V('act', '處置', 'select', ['已協助臥床休息', '協助攙扶起來', '傷口清潔消毒', '評估後予以送醫']), V('notify', '通知', 'select', ['已通知主管及家屬', '已傳訊息告知家屬', '已通知主管、家屬及醫師'])].concat(VS_FIELDS),
     text: (o) => j(`於${o.time || '__:__'}分${o.by === '巡視時發現' ? '巡視時發現住民' : o.by === '住民自行告知' ? '住民告知' : o.by + '住民'}於${o.place}${o.how}跌倒`, o.lv, vsLine(o), o.inj === '身體檢查無外傷或紅腫' ? o.inj : `身體檢查${o.injd ? o.injd : ''}${o.inj}`, o.pain, o.act, o.notify, o.act === '評估後予以送醫' ? '待追蹤。' : '重新評估跌倒風險，續觀。'),
-    link: { event: '跌倒', map: o => ({ place: o.place, injury: /無外傷/.test(o.inj) ? '無傷害' : /縫合/.test(o.inj) ? '中度（需縫合、扭傷）' : /骨折/.test(o.inj) ? '重度（骨折、頭部外傷）' : '輕度（擦傷、瘀青）', time: o.time, notify: ['家屬'].concat(/醫師/.test(o.notify) ? ['醫師'] : []).concat(/主管/.test(o.notify) ? ['業務負責人'] : []), factors: [/床欄/.test(o.how) && '設備：床欄或煞車未固定', /如廁/.test(o.how) && '個人：如廁急迫', /躁動|混亂/.test(o.lv) && '個人：認知障礙或躁動', /輪椅|行走|轉位/.test(o.how) && '個人：肌力／平衡差', /^0[0-5]|^2[2-3]/.test(o.time || '') && '人力：交班或夜間人力'].filter(Boolean) }) },
+    link: { event: '跌倒', map: o => ({ place: o.place, injury: /無外傷/.test(o.inj) ? '無傷害' : /縫合/.test(o.inj) ? '2級（中度：需縫合、扭傷）' : /骨折/.test(o.inj) ? '3級（重度：骨折、頭部外傷）' : '1級（輕度：擦傷、瘀青）', fallCause: o.cause, time: o.time, notify: ['家屬'].concat(/醫師/.test(o.notify) ? ['醫師'] : []).concat(/主管/.test(o.notify) ? ['業務負責人'] : []), factors: [/床欄/.test(o.how) && '設備：床欄或煞車未固定', /如廁/.test(o.how) && '個人：如廁急迫', /躁動|混亂/.test(o.lv) && '個人：認知障礙或躁動', /輪椅|行走|轉位/.test(o.how) && '個人：肌力／平衡差', /^0[0-5]|^2[2-3]/.test(o.time || '') && '人力：交班或夜間人力'].filter(Boolean) }) },
   },
   '送急診': {
     fields: [V('time', '發現時間', 'time'), V('sym', '狀況', 'select', ['呼吸喘', '血氧下降', '意識改變、叫喚無反應', '發燒不退', '抽搐', '胸悶胸痛', '嘔吐咖啡色物', '跌倒受傷', '其他']), V('symd', '狀況描述', 'text', null, '', '例：呼吸喘且呈腹式呼吸'),
@@ -76,7 +76,7 @@ const NOTE_TEMPLATES = {
   '痰多': {
     fields: [V('look', '痰液性狀', 'select', ['色黃、稠', '色白、稠', '色白、稀', '帶血絲']), V('breath', '呼吸', 'select', ['呼吸平順、偶咳嗽', '呼吸稍喘', '需抽痰']), V('act', '處置', 'select', ['依醫囑用藥，囑照服員落實翻身拍背、加強化痰', '予抽痰並回報醫師', '回報巡診醫師診治'])],
     text: (o) => j(`今住民痰液多、${o.look}`, o.breath, o.act, '續觀。'),
-    link: { infection: '呼吸道感染' },
+    link: { infection: '上呼吸道感染' },
   },
   '發燒': {
     fields: [V('t', '體溫'), V('sym', '伴隨症狀', 'text', null, '', '例：咳嗽、尿液混濁'), V('act', '處置', 'select', ['予溫水擦澡、增加水份攝取並通知醫師', '依醫囑給予退燒藥', '冰枕使用並監測體溫 q4h']), V('re', '30 分鐘後體溫', 'text')],
@@ -140,7 +140,8 @@ function tplLinkLabel(L) {
 ACT.tplBack = () => { const D = window.__noteDraft; $('#mbody').innerHTML = D.body(); };
 ACT.tplApply = () => {
   const D = window.__noteDraft, T = NOTE_TEMPLATES[tplState.t];
-  D.n.kind = '一般'; D.n.title = tplState.t; D.n.text = (D.n.text ? D.n.text + '\n' : '') + T.text(tplState.o);
+  D.n.title = tplState.t; const gen = T.text(tplState.o);
+  if (D.n.kind === 'DAR') D.n.D = (D.n.D ? D.n.D + '\n' : '') + gen; else if (D.n.kind === 'SOAP') D.n.O = (D.n.O ? D.n.O + '\n' : '') + gen; else D.n.text = (D.n.text ? D.n.text + '\n' : '') + gen;
   if (/緊急|送急診|跌倒|血氧|住院/.test(tplState.t)) D.n.handover = true;
   D.n._link = T.link && $('#tplLink') && $('#tplLink').checked ? { t: tplState.t, o: tplState.o } : null;
   if (tplState.o.t || tplState.o.sbp || tplState.o.spo2) D.n._vs = { t: tplState.o.t, p: tplState.o.p, r: tplState.o.r, sbp: tplState.o.sbp, dbp: tplState.o.dbp, spo2: tplState.o.spo2 };
@@ -152,10 +153,10 @@ function applyNoteLinks(n) {
   if (vs && n.date === today()) { const x = getDaily(n.rid, n.date); const patch = {}; [['temp', 't'], ['pulse', 'p'], ['resp', 'r'], ['sbp', 'sbp'], ['dbp', 'dbp'], ['spo2', 'spo2']].forEach(([a, b]) => { if (vs[b] !== '' && vs[b] != null && (x[a] === '' || x[a] == null)) patch[a] = +vs[b]; }); if (Object.keys(patch).length) setDaily(n.rid, n.date, patch); }
   if (!L) return [];
   const T = NOTE_TEMPLATES[L.t].link, o = L.o, made = [];
-  if (T.event) { const e = save('events', Object.assign({ rid: n.rid, type: T.event, date: n.date, time: o.time || n.time, desc: n.text, immediate: '', status: '追蹤中' }, T.map ? T.map(o) : {})); made.push(`${T.event}事件`); n.eventId = e.id; if (T.status) { const r = resById(n.rid); r.status = T.status; save('residents', r); } }
-  if (T.infection) { const e = save('events', { rid: n.rid, type: '感染', date: n.date, time: n.time, infType: T.infection, reported: '不需通報', desc: n.text, status: '追蹤中' }); made.push('感染監測'); n.eventId = e.id; }
+  if (T.event) { const e = save('events', Object.assign({ rid: n.rid, type: T.event, date: n.date, time: o.time || n.time, desc: noteText(n), immediate: '', status: '追蹤中' }, T.map ? T.map(o) : {})); made.push(`${T.event}事件`); n.eventId = e.id; if (T.status) { const r = resById(n.rid); r.status = T.status; save('residents', r); } }
+  if (T.infection) { const e = save('events', { rid: n.rid, type: '感染', date: n.date, time: n.time, infType: T.infection, reported: '不需通報', desc: noteText(n), status: '追蹤中' }); made.push('感染監測'); n.eventId = e.id; }
   if (T.contact) { save('contacts', { rid: n.rid, kind: T.contact, date: n.date, content: n.text }); made.push(T.contact); }
-  if (T.vaccine) { const kinds = /流感及新冠/.test(o.vac) ? ['流感', 'COVID-19'] : /流感/.test(o.vac) ? ['流感'] : /新冠/.test(o.vac) ? ['COVID-19'] : ['肺鏈 PPV23']; kinds.forEach(k => save('vaccines', { rid: n.rid, kind: k, date: n.date, refused: false })); made.push('疫苗接種'); }
+  if (T.vaccine) { const kinds = /流感及新冠/.test(o.vac) ? ['流感', 'COVID-19'] : /流感/.test(o.vac) ? ['流感'] : /新冠/.test(o.vac) ? ['COVID-19'] : []; kinds.forEach(k => save('vaccines', { rid: n.rid, kind: k, date: n.date, refused: false })); made.push('疫苗接種'); }
   return made;
 }
 
@@ -211,6 +212,7 @@ function wordDoc(pages, title) {
     body{font-family:"標楷體","DFKai-SB","BiauKai",serif;font-size:12pt} h1{text-align:center;font-size:17pt;margin:0 0 2pt} .org{text-align:center;font-size:12pt}
     table{border-collapse:collapse;width:100%;margin:4pt 0} td,th{border:1px solid #000;padding:3pt 5pt;vertical-align:top;font-size:11pt} th{background:#eee}
     .meta{font-size:11pt;margin:4pt 0} .note{font-size:9.5pt;color:#333} .box{border:1px solid #000;padding:4pt} .sign{margin-top:14pt}`;
+  pages = pages.map(p => p.replace(/(white-space:pre-wrap[^>]*>)([\s\S]*?)(<\/t[dh]>|<\/div>)/g, (m, a, b, c) => a + b.replace(/\n/g, '<br>') + c));
   const body = pages.map((p, i) => (i ? '<br clear="all" style="page-break-before:always">' : '') + p.replace(/<span class="ck y">/g, '<span>☑ ').replace(/<span class="ck">/g, '<span>☐ ').replace(/<div class="meta">([\s\S]*?)<\/div>/g, (m, inner) => `<p class="meta">${inner.replace(/<\/span>\s*<span>/g, '　　')}</p>`).replace(/<div class="sign">([\s\S]*?)<\/div>/g, (m, inner) => `<p class="sign">${inner.replace(/<\/span>\s*<span>/g, '　　')}</p>`)).join('');
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>${esc(title)}</title>
     <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]--><style>${css}</style></head><body><div class="WordSection1">${body}</div></body></html>`;
