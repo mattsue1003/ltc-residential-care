@@ -842,6 +842,8 @@ function weightAlert(rid) {
 /* ===== 提醒引擎 ===== */
 function buildReminders() {
   const T = today(), list = [];
+  // 舊住民（入住已久卻無紀錄）從今天起算，不顯示上千天的逾期
+  const firstDue = (admit, days) => diffDays(admit, T) > days + 30 ? T : addDays(admit, days);
   const push = (o) => list.push(Object.assign({ level: 'warn' }, o));
   const status = (due) => { const d = diffDays(T, due); return d < 0 ? 'bad' : d <= 7 ? 'warn' : 'info'; };
   activeResidents().forEach(r => {
@@ -855,11 +857,11 @@ function buildReminders() {
       if (!a || a.date < r.admitDate) first.push(t);
       else { const due = addDays(a.date, scaleCycle(t)); if (diffDays(T, due) <= 14) periodic.push([t, due, a.date]); }
     });
-    if (first.length) { const due = addDays(r.admitDate, 3); push({ rid: r.id, cat: '評估', ref: 'B2', title: `入住 72 小時評估：${first.map(t => SCALES[t].short).join('、')}`, due, level: status(due), act: `assess:${r.id}:${first.join(',')}` }); }
+    if (first.length) { const old = diffDays(r.admitDate, T) > 33; const due = firstDue(r.admitDate, 3); push({ rid: r.id, cat: '評估', ref: 'B2', title: `${old ? '尚無評估紀錄，請補做定期評估' : '入住 72 小時評估'}：${first.map(t => SCALES[t].short).join('、')}`, due, level: status(due), act: `assess:${r.id}:${first.join(',')}` }); }
     if (periodic.length) { periodic.sort((x, y) => x[1].localeCompare(y[1])); const due = periodic[0][1]; push({ rid: r.id, cat: '評估', ref: 'B2', title: `每 ${Math.round(facType().cycle / 30)} 個月定期評估：${periodic.map(p => SCALES[p[0]].short).join('、')}（上次 ${roc(periodic[0][2])}）`, due, level: status(due), act: `assess:${r.id}:${periodic.map(p => p[0]).join(',')}` }); }
     // 照顧計畫
     const p = latestPlan(r.id);
-    if (!p) { const due = addDays(r.admitDate, 3); push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: '擬定個別化照顧計畫', due, level: status(due), act: `plan:${r.id}` }); }
+    if (!p) { const due = firstDue(r.admitDate, 3); push({ rid: r.id, cat: '照顧計畫', ref: 'B2', title: '擬定個別化照顧計畫', due, level: status(due), act: `plan:${r.id}` }); }
     else {
       const fam = p.familyDate || '';
       const due = addDays(fam || p.date, 183);
@@ -874,7 +876,7 @@ function buildReminders() {
       if (k === '家屬電訪／會談' && r.noFamily) return;
       const last = latestContact(r.id, k);
       let due;
-      if (!last) due = k === '醫師巡診' ? addDays(r.admitDate, 30) : k === '年度健康檢查' ? addDays(r.admitDate, 365) : addDays(r.admitDate, c.every);
+      if (!last) due = firstDue(r.admitDate, k === '醫師巡診' ? 30 : k === '年度健康檢查' ? 365 : c.every);
       else due = addDays(last.date, c.every);
       if (diffDays(T, due) <= (c.every >= 90 ? 14 : 5)) push({ rid: r.id, cat: '訪視聯繫', ref: c.ref, title: `${k}${last ? `（上次 ${roc(last.date)}）` : k === '醫師巡診' ? '：新入住 1 個月內完成醫師診察' : ''}`, due, level: status(due), act: `contact:${r.id}:${k}` });
     });
@@ -887,7 +889,7 @@ function buildReminders() {
     }
     // 體重
     const ws = weightsOf(r.id), lw = ws[ws.length - 1];
-    const wdue = lw ? addDays(lw.date, 30) : addDays(r.admitDate, 3);
+    const wdue = lw ? addDays(lw.date, 30) : firstDue(r.admitDate, 3);
     if (diffDays(T, wdue) <= 3) push({ rid: r.id, cat: '體重', ref: 'B18', title: `每月體重測量${lw ? `（上次 ${roc(lw.date)}）` : ''}`, due: wdue, level: status(wdue), act: `weight:${r.id}` });
     const wa = weightAlert(r.id);
     if (wa && !DB.events.some(e => e.rid === r.id && e.type === '非計畫性體重改變' && e.date >= wa.from.date))
