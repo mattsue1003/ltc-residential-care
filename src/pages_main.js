@@ -33,7 +33,7 @@ ROUTES.dash = () => {
   const u = DB.settings.user;
   return `
   ${DB.settings.trial ? `<div class="banner info">這是<b>去識別化試用資料</b>，只存在這台裝置。可以放心新增、修改來模擬操作；要重來可到「設定與備份」重新載入。</div>` : ''}
-  ${!DB.residents.length ? `<div class="banner info">目前沒有任何資料。可以到<a href="#/settings">設定與備份</a>載入示範資料先試用，或直接<a href="#/res">新增住民</a>。</div>` : ''}
+  ${!DB.residents.length ? `<div class="banner info" style="font-size:16px">目前沒有任何資料。<button class="btn pri" data-act="openTrial">載入試用資料（需密碼）</button><span>或到<a href="#/settings">設定與備份</a>載入示範資料、直接<a href="#/res">新增住民</a>。</span></div>` : ''}
   ${Folder.handle && !Folder.ok ? `<div class="banner warn">自動存檔資料夾「${esc(Folder.handle.name)}」需要重新授權才能繼續寫入。<button class="btn sm pri" data-act="folderRegrant">恢復自動存檔</button></div>` : ''}
   ${DB.residents.length && !Folder.ok && (!backup || diffDays(backup.slice(0, 10), T) > 7) ? `<div class="banner warn">已超過 7 天沒有備份，資料只存在這台電腦。建議到「設定與備份」連結自動存檔資料夾，或每週匯出一次。<button class="btn sm" data-act="exportData">立即備份</button></div>` : ''}
   <div class="hd"><div><h1>今日待辦</h1><p class="sub">${roc(T)}　${u ? esc(u.name) + '，' : ''}系統依評鑑指標自動計算到期與逾期項目，點「處理」直接開啟對應表單。<br><span class="small">評鑑依據：${esc(accredName())}｜${esc(DB.settings.facType || '養護型（老人福利機構）')}</span></p></div></div>

@@ -210,8 +210,10 @@ async function trialAvailable() { if (Cloud.on) return false; try { const r = aw
 function openTrialLoader(auto) {
   openModal('載入試用資料', `<p class="small">這份是健復養護中心的<b>去識別化試用資料</b>（47 位住民、近一個月護理紀錄），已加密。請輸入密碼。</p>
     <label class="f">試用密碼<input id="trialPw" autocomplete="off" placeholder="jf-xxxx-xxxx-xxxx"></label>
-    <p class="small muted">資料只會載入到這台裝置的這個瀏覽器。${DB.residents.length ? '<b style="color:var(--warn)">注意：會覆蓋這台裝置目前的資料。</b>' : ''}</p><p id="trialMsg" class="small" style="color:var(--bad)"></p>`, () => { loadTrial($('#trialPw').value.trim()); return false; }, { saveText: '解鎖並載入' });
+    <p class="small muted">資料只會載入到這台裝置的這個瀏覽器。${DB.residents.length ? '<b style="color:var(--warn)">注意：會覆蓋這台裝置目前的資料。</b>' : ''}</p><p id="trialMsg" class="small" style="color:var(--bad)"></p>`, () => { loadTrial($('#trialPw').value.trim()); return false; }, { saveText: '解鎖並載入', extraBtn: auto ? '<button class="btn ghost" data-act="skipTrial">不用，從空白開始</button>' : '' });
+  setTimeout(() => { const i = $('#trialPw'); if (i) { i.focus(); i.addEventListener('keydown', e => { if (e.key === 'Enter') loadTrial(i.value.trim()); }); } }, 50);
 }
+ACT.skipTrial = () => { closeModal(); if (!DB.settings.user) askUser(true); };
 async function loadTrial(pass) {
   const msg = $('#trialMsg'); if (!pass) { msg.textContent = '請輸入密碼'; return; }
   msg.style.color = 'var(--muted)'; msg.textContent = '解密中…';
