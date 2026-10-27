@@ -45,6 +45,8 @@ h3{font-size:15px;margin:14px 0 8px}
 .grid{display:grid;gap:12px}
 .g2{grid-template-columns:repeat(2,minmax(0,1fr))}.g3{grid-template-columns:repeat(3,minmax(0,1fr))}.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
 .kpi{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px;box-shadow:var(--sh);cursor:default}
+ button.kpi{text-align:left;cursor:pointer;width:100%;font:inherit;color:inherit}button.kpi:hover{border-color:var(--pri)}
+.qcell{border:0;background:transparent;padding:2px 4px;margin:-2px -4px;border-radius:6px;cursor:pointer;text-align:left;font:inherit;color:var(--pri-d);text-decoration:underline;text-underline-offset:3px}.qcell:hover{background:var(--pri-soft)}
 .kpi .n{font-size:28px;font-weight:700;line-height:1.1}
 .kpi .l{color:var(--muted);font-size:13px}
 .kpi.bad .n{color:var(--bad)}.kpi.warn .n{color:var(--warn)}.kpi.ok .n{color:var(--ok)}

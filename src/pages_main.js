@@ -20,7 +20,7 @@ ROUTES.dash = () => {
   const res = activeResidents().filter(inHouse);
   const T = today();
   const cats = ['全部', ...new Set(rem.map(r => r.cat))];
-  const shown = rem.filter(r => (dashCat === '全部' || r.cat === dashCat) && roleFilter(r));
+  const shown = rem.filter(r => (dashCat === '全部' || r.cat === dashCat) && roleFilter(r) && (!dashBadOnly || r.level === 'bad'));
   const bad = rem.filter(r => r.level === 'bad').length;
   const monthEv = DB.events.filter(e => e.date.startsWith(T.slice(0, 7))).length;
   const restr = DB.restraints.filter(x => !x.endDate).length;
@@ -38,14 +38,14 @@ ROUTES.dash = () => {
   ${DB.residents.length && !Folder.ok && (!backup || diffDays(backup.slice(0, 10), T) > 7) ? `<div class="banner warn">已超過 7 天沒有備份，資料只存在這台電腦。建議到「設定與備份」連結自動存檔資料夾，或每週匯出一次。<button class="btn sm" data-act="exportData">立即備份</button></div>` : ''}
   <div class="hd"><div><h1>今日待辦</h1><p class="sub">${roc(T)}　${u ? esc(u.name) + '，' : ''}系統依評鑑指標自動計算到期與逾期項目，點「處理」直接開啟對應表單。<br><span class="small">評鑑依據：${esc(accredName())}｜${esc(DB.settings.facType || '養護型（老人福利機構）')}</span></p></div></div>
   <div class="grid g4">
-    <div class="kpi"><div class="n">${res.length}</div><div class="l">在住人數${DB.settings.beds ? `／床數 ${DB.settings.beds}` : ''}</div></div>
-    <div class="kpi ${bad ? 'bad' : 'ok'}"><div class="n">${bad}</div><div class="l">逾期／需立即處理</div></div>
-    <div class="kpi ${restr ? 'warn' : ''}"><div class="n">${restr}</div><div class="l">約束中</div></div>
-    <div class="kpi"><div class="n">${monthEv}</div><div class="l">本月異常事件</div></div>
+    <button class="kpi" data-act="go" data-to="res"><div class="n">${res.length}</div><div class="l">在住人數${DB.settings.beds ? `／床數 ${DB.settings.beds}` : ''} ›</div></button>
+    <button class="kpi ${bad ? 'bad' : 'ok'}" data-act="dashBad"><div class="n">${bad}</div><div class="l">逾期／需立即處理 ›</div></button>
+    <button class="kpi ${restr ? 'warn' : ''}" data-act="go" data-to="restraint"><div class="n">${restr}</div><div class="l">約束中 ›</div></button>
+    <button class="kpi" data-act="go" data-to="events"><div class="n">${monthEv}</div><div class="l">本月異常事件 ›</div></button>
   </div>
   <div class="grid g2" style="margin-top:16px;align-items:start">
     <div class="card" style="padding:0">
-      <div style="padding:14px 16px 0"><div class="row"><h2 style="margin:0">待辦清單 <span class="muted small">${shown.length} 項</span></h2><span class="sp"></span>
+      <div style="padding:14px 16px 0"><div class="row"><h2 style="margin:0">待辦清單 <span class="muted small">${shown.length} 項${dashBadOnly ? '（只看逾期，再點一次逾期方塊可取消）' : ''}</span></h2><span class="sp"></span>
         ${u && ROLE_CATS[u.role] ? `<label class="small row" style="gap:4px"><input type="checkbox" data-act="toggleRole" ${dashRole ? 'checked' : ''}> 只看${esc(u.role.replace('人員', ''))}的工作</label>` : ''}</div>
       <div class="chips" style="margin-top:10px">${cats.map(c => `<button class="chip ${c === dashCat ? 'on' : ''}" data-act="dashCat" data-c="${esc(c)}">${esc(c)} ${c === '全部' ? rem.length : rem.filter(r => r.cat === c).length}</button>`).join('')}</div></div>
       <div style="max-height:620px;overflow:auto">${shown.length ? shown.slice(0, 300).map(remRow).join('') : '<div class="empty">沒有待辦事項，做得好！</div>'}</div>
@@ -76,6 +76,8 @@ function facilityStatusTable() {
     return `<tr><td>${esc(t.kind)} ${refChip(t.ref)}</td><td class="nowrap">${last ? roc(last.date) : '<span class="muted">無</span>'}</td><td class="nowrap"><span class="chip ${d < 0 ? 'bad' : d <= 14 ? 'warn' : 'ok'}">${due ? roc(due) : '待辦'}</span></td><td><button class="btn sm" data-act="newMeeting" data-k="${esc(t.kind)}">記錄</button></td></tr>`;
   }).join('')}</table>`;
 }
+let dashBadOnly = false;
+ACT.dashBad = () => { dashBadOnly = !dashBadOnly; dashCat = '全部'; refresh(); const c = $('.rem'); if (c) c.scrollIntoView({ block: 'center', behavior: 'smooth' }); };
 ACT.dashCat = el => { dashCat = el.dataset.c; refresh(); };
 ACT.toggleRole = () => { dashRole = !dashRole; refresh(); };
 ACT.doRem = el => doAct(el.dataset.a);

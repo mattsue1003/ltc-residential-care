@@ -1,22 +1,23 @@
 /* ===== 品質指標 ===== */
 function recentQuarters(n) { const out = []; let q = quarterOf(today()); for (let i = 0; i < n; i++) { out.push(q); q = prevQuarter(q); } return out; }
 ROUTES.quality = (q) => {
-  q = q || prevQuarter(quarterOf(today()));
+  q = q || quarterOf(today());
   const [f, t] = quarterRange(q);
   const months = [0, 1, 2].map(i => { const d = new Date(f + 'T00:00:00'); d.setMonth(d.getMonth() + i); return ymd(d).slice(0, 7); });
   const ms = months.map(m => qualityStats(...monthRange(m)));
   const qs = qualityStats(f, t);
   const hist = recentQuarters(4).reverse().map(x => [x, qualityStats(...quarterRange(x))]);
   const Q = DB.quarterly[q] || { analysis: {} };
-  const fmt = (row) => row.rate === null ? row.n : `${row.n}<div class="small muted">${row.rate.toFixed(2)} ${row.unit}</div>`;
+  const fmt = (row, a, b) => { const inner = row.rate === null ? row.n : `${row.n}<div class="small muted">${row.rate.toFixed(2)} ${row.unit}</div>`; return row.n ? `<button class="qcell" data-act="qDrill" data-k="${esc(row.key)}" data-f="${a}" data-t="${b}" title="點開看是哪幾件">${inner}</button>` : inner; };
   return `<div class="hd"><div><h1>品質指標</h1><p class="sub">由事件登錄、約束、體重、評估資料自動計算。人日數 = 每位住民在機構的天數加總。每季完成分析檢討即符合 B12–B18「定期（每季）分析」。</p></div><span class="sp"></span>
-    <select id="qSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${recentQuarters(8).map(x => `<option${x === q ? ' selected' : ''}>${x}</option>`).join('')}</select></div>
+    <select id="qSel" style="padding:7px;border:1px solid var(--line);border-radius:8px">${recentQuarters(8).map(x => `<option value="${x}"${x === q ? ' selected' : ''}>${x.replace('-Q', ' 年第 ')} 季${x === quarterOf(today()) ? '（本季）' : ''}</option>`).join('')}</select></div>
+  <p class="small muted" style="margin-top:-6px">數字可以點開看是哪幾件；右邊趨勢長條點一下切換季度。</p>
   <div class="grid g4"><div class="kpi"><div class="n">${qs.rd}</div><div class="l">本季住民人日數</div></div><div class="kpi"><div class="n">${qs.census}</div><div class="l">平均每日在住</div></div>
     <div class="kpi ${Q.done ? 'ok' : 'warn'}"><div class="n">${Q.done ? '已完成' : '未完成'}</div><div class="l">本季分析檢討</div></div><div class="kpi"><div class="n">${DB.events.filter(e => e.date >= f && e.date <= t).length}</div><div class="l">本季事件總數</div></div></div>
   <div class="card" style="margin-top:16px;padding:0"><div class="tw"><table class="t"><tr><th>指標</th>${months.map(m => `<th>${+m.slice(5)} 月</th>`).join('')}<th>本季</th><th>近 4 季趨勢</th></tr>
   ${qs.rows.map((row, i) => { const h = hist.map(([, s]) => s.rows[i].rate ?? s.rows[i].n); const mx = Math.max(...h, 0.0001);
-    return `<tr><td>${esc(row.key)} ${refChip(row.ref)}</td>${ms.map(s => `<td>${fmt(s.rows[i])}</td>`).join('')}<td><b>${fmt(row)}</b></td>
-    <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${h.map((v, j) => `<div title="${hist[j][0]}：${typeof v === 'number' ? v.toFixed(2) : v}" style="width:16px;height:${Math.max(2, v / mx * 28)}px;background:${j === 3 ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></div>`).join('')}</div></td></tr>`; }).join('')}</table></div></div>
+    return `<tr><td>${esc(row.key)} ${refChip(row.ref)}</td>${ms.map((s, mi) => `<td>${fmt(s.rows[i], ...monthRange(months[mi]))}</td>`).join('')}<td><b>${fmt(row, f, t)}</b></td>
+    <td><div style="display:flex;gap:3px;align-items:flex-end;height:30px">${h.map((v, j) => `<button data-act="qGo" data-q="${hist[j][0]}" title="${hist[j][0]}：${typeof v === 'number' ? v.toFixed(2) : v}（點一下切換到這一季）" style="width:18px;padding:0;border:0;cursor:pointer;height:${Math.max(3, v / mx * 28)}px;background:${hist[j][0] === q ? 'var(--pri)' : 'var(--line)'};border-radius:2px"></button>`).join('')}</div></td></tr>`; }).join('')}</table></div></div>
   <h2>本季分析與改善方案</h2><p class="sub">逐項填寫後按「完成本季分析」。建議於品質會議中討論並記錄於「會議與活動」。</p>
   <div id="qForm">${qs.rows.filter(r => r.rate !== null || r.key.startsWith('管路成功')).map(row => { const a = (Q.analysis || {})[row.key] || {}; const evs = DB.events.filter(e => row.key.startsWith(e.type) && e.date >= f && e.date <= t);
     return `<div class="card"><div class="row"><b>${esc(row.key)}</b>${refChip(row.ref)}<span class="sp"></span><span class="chip">${row.n} 件</span></div>
@@ -24,6 +25,23 @@ ROUTES.quality = (q) => {
     <div class="grid g2"><label class="f">分析（趨勢、共同原因）<textarea data-qk="${esc(row.key)}" data-qf="a">${esc(a.a || '')}</textarea></label><label class="f">檢討與改善方案<textarea data-qk="${esc(row.key)}" data-qf="b">${esc(a.b || '')}</textarea></label></div></div>`; }).join('')}</div>
   <div class="row"><button class="btn" data-act="qSave" data-q="${q}">暫存</button><button class="btn pri" data-act="qDone" data-q="${q}">完成本季分析</button><button class="btn" data-act="printQuarter" data-q="${q}">列印季報告</button></div>`;
 };
+const QKEY_TYPE = { '跌倒': ['跌倒'], '壓力性損傷（機構內新發生）': ['壓力性損傷'], '感染': ['感染'], '非計畫性住院': ['非計畫性住院'], '非計畫性體重改變': ['非計畫性體重改變'], '管路滑脫／自拔': ['管路滑脫／自拔'], '管路成功移除': ['管路移除'] };
+ACT.qGo = el => go('quality/' + el.dataset.q);
+ACT.qDrill = el => {
+  const k = el.dataset.k, f = el.dataset.f, t = el.dataset.t; let html = '';
+  if (QKEY_TYPE[k]) {
+    const list = DB.events.filter(e => QKEY_TYPE[k].includes(e.type) && e.date >= f && e.date <= t).sort((a, b) => a.date.localeCompare(b.date));
+    html = `<table class="t"><tr><th>日期</th><th>住民</th><th>經過</th><th>分析</th><th></th></tr>${list.map(e => `<tr><td class="nowrap">${roc(e.date)}</td><td class="nowrap">${esc(resLabel(resById(e.rid)))}</td><td class="small">${esc((e.desc || '').slice(0, 60))}</td><td>${e.cause && e.action ? '<span class="chip ok">已分析</span>' : '<span class="chip bad">待分析</span>'}</td><td><button class="btn sm" data-act="qOpenEv" data-id="${e.id}">開啟</button></td></tr>`).join('')}</table>`;
+  } else if (k === '約束') {
+    const list = DB.restraints.filter(x => x.startDate <= t && (!x.endDate || x.endDate >= f));
+    html = `<table class="t"><tr><th>住民</th><th>期間</th><th>目的</th></tr>${list.map(x => `<tr><td>${esc(resLabel(resById(x.rid)))}</td><td>${roc(x.startDate)}～${x.endDate ? roc(x.endDate) : '持續中'}</td><td>${esc((x.reasons || []).join('、'))}</td></tr>`).join('')}</table>`;
+  } else if (/疼痛/.test(k)) {
+    const list = DB.daily.filter(d => d.date >= f && d.date <= t && +d.pain >= 4).sort((a, b) => a.date.localeCompare(b.date));
+    html = `<table class="t"><tr><th>日期</th><th>住民</th><th>疼痛分數</th></tr>${list.map(d => `<tr><td>${roc(d.date)}</td><td>${esc(resLabel(resById(d.rid)))}</td><td>${d.pain}</td></tr>`).join('')}</table>`;
+  } else html = '<p class="small muted">此指標由評估資料計算，請到住民個人頁查看評估紀錄。</p>';
+  openModal(`${k}｜${roc(f)}～${roc(t)}`, html, null);
+};
+ACT.qOpenEv = el => { closeModal(); openEvent(el.dataset.id); };
 ROUTES.after_quality = () => { $('#qSel').addEventListener('change', e => go('quality/' + e.target.value)); };
 function readQ(q) { const Q = DB.quarterly[q] || { analysis: {} }; Q.analysis = Q.analysis || {}; $$('#qForm textarea').forEach(t => { (Q.analysis[t.dataset.qk] = Q.analysis[t.dataset.qk] || {})[t.dataset.qf] = t.value; }); return Q; }
 ACT.qSave = el => { setKV('quarterly', el.dataset.q, readQ(el.dataset.q)); toast('已暫存'); };
