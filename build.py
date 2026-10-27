@@ -3,7 +3,7 @@
 import pathlib
 ROOT = pathlib.Path(__file__).parent
 S = ROOT / 'src'
-JS = ['scales.js', 'indicators.js', 'store.js', 'logic.js', 'ui.js', 'pages_main.js', 'pages_care.js', 'pages_qa.js', 'print.js', 'storage.js', 'cloud.js', 'pages_extra.js', 'demo.js', 'main.js']
+JS = ['scales.js', 'indicators.js', 'store.js', 'logic.js', 'ui.js', 'pages_main.js', 'pages_care.js', 'pages_qa.js', 'print.js', 'storage.js', 'cloud.js', 'templates.js', 'pages_extra.js', 'demo.js', 'main.js']
 css = (S / 'styles.css').read_text()
 js = '\n'.join(f'/* ---- {f} ---- */\n' + (S / f).read_text() for f in JS)
 html = f'''<!doctype html>

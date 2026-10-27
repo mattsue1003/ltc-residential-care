@@ -85,7 +85,7 @@ ROUTES.notes = () => {
   ${noteListHTML(list, true)}`;
 };
 function noteListHTML(list, showRes) {
-  return list.length ? list.map(n => `<div class="card" style="padding:12px 14px"><div class="row small"><b>${roc(n.date)} ${esc(n.time || '')}</b>${showRes ? `<a href="#/r/${n.rid}">${esc(resLabel(resById(n.rid)))}</a>` : ''}<span class="chip">${esc(n.disc || '')}</span><span class="chip">${esc(n.kind)}</span>${n.handover ? '<span class="chip warn">交班</span>' : ''}<span class="sp"></span><span class="muted">${esc(n.by || '')}</span><button class="btn sm" data-act="editNote" data-id="${n.id}">編輯</button></div>
+  return list.length ? list.map(n => `<div class="card" style="padding:12px 14px"><div class="row small"><b>${roc(n.date)} ${esc(n.time || '')}</b>${showRes ? `<a href="#/r/${n.rid}">${esc(resLabel(resById(n.rid)))}</a>` : ''}${n.title ? `<span class="chip pri">${esc(n.title)}</span>` : ''}<span class="chip">${esc(n.disc || '')}</span>${n.kind !== '一般' ? `<span class="chip">${esc(n.kind)}</span>` : ''}${n.eventId ? '<span class="chip warn">已登錄品質指標</span>' : ''}${n.handover ? '<span class="chip warn">交班</span>' : ''}<span class="sp"></span><span class="muted">${esc(n.by || '')}</span><button class="btn sm" data-act="editNote" data-id="${n.id}">編輯</button></div>
     <div style="white-space:pre-wrap;margin-top:6px">${esc(noteText(n))}</div></div>`).join('') : '<div class="card empty">尚無紀錄</div>';
 }
 function noteText(n) { if (n.kind === 'SOAP') return ['S', 'O', 'A', 'P'].map(k => n[k] ? `${k}：${n[k]}` : '').filter(Boolean).join('\n'); if (n.kind === 'DAR') return [['D', '資料'], ['A', '措施'], ['R', '反應']].map(([k, l]) => n[k] ? `${l}：${n[k]}` : '').filter(Boolean).join('\n'); return n.text || ''; }
@@ -100,7 +100,7 @@ function assessSentence(rid) { const la = latestAssess(rid), r = resById(rid); c
 function planSentence(rid) { const p = latestPlan(rid); return p && p.problems.length ? '照顧問題：' + p.problems.map((x, i) => `#${i + 1} ${x.problem}`).join('；') : '尚無照顧計畫。'; }
 function openNote(id, rid) {
   const n = id ? DB.notes.find(x => x.id === id) : { rid: rid || (activeResidents().filter(inHouse)[0] || {}).id, date: today(), time: new Date().toTimeString().slice(0, 5), kind: myRole() === '護理人員' ? 'DAR' : '一般', disc: myRole(), handover: false };
-  const body = () => `<div class="grid g3">${field({ key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === n.rid).map(r => [r.id, resLabel(r)]), req: true }, n.rid)}${field({ key: 'date', label: '日期', type: 'date' }, n.date)}${field({ key: 'time', label: '時間', type: 'time' }, n.time)}</div>
+  const body = () => `${tplPicker()}<div class="grid g3">${field({ key: 'rid', label: '住民', type: 'select', options: DB.residents.filter(r => inHouse(r) || r.id === n.rid).map(r => [r.id, resLabel(r)]), req: true }, n.rid)}${field({ key: 'date', label: '日期', type: 'date' }, n.date)}${field({ key: 'time', label: '時間', type: 'time' }, n.time)}</div>
     <div class="chips">${['一般', 'DAR', 'SOAP'].map(k => `<button class="chip ${n.kind === k ? 'on' : ''}" data-act="noteKind" data-k="${k}">${k === 'DAR' ? 'DAR（資料／措施／反應）' : k === 'SOAP' ? 'SOAP' : '一般紀錄'}</button>`).join('')}</div>
     <div class="row small" style="margin-bottom:6px"><span class="muted">帶入：</span><button class="btn sm" data-act="noteIns" data-w="v">今日生命徵象</button><button class="btn sm" data-act="noteIns" data-w="a">最新評估摘要</button><button class="btn sm" data-act="noteIns" data-w="p">照顧計畫問題</button></div>
     ${n.kind === 'SOAP' ? ['S', 'O', 'A', 'P'].map(k => field({ key: k, label: { S: 'S 主觀資料（住民或家屬陳述）', O: 'O 客觀資料（觀察、量測）', A: 'A 評估', P: 'P 計畫' }[k], type: 'textarea' }, n[k])).join('')
@@ -108,12 +108,12 @@ function openNote(id, rid) {
       : field({ key: 'text', label: '紀錄內容', type: 'textarea' }, n.text)}
     <div class="chips">${notePhrases().map(p => `<button class="chip" data-act="notePhrase" data-t="${esc(p)}">${esc(p)}</button>`).join('')}</div>
     ${field({ key: 'handover', label: '列入交班', type: 'bool' }, n.handover)}`;
-  const F = () => [{ key: 'rid', req: true, label: '住民' }, { key: 'date' }, { key: 'time' }, { key: 'handover', type: 'bool' }].concat((n.kind === 'SOAP' ? ['S', 'O', 'A', 'P'] : n.kind === 'DAR' ? ['D', 'A', 'R'] : ['text']).map(k => ({ key: k })));
+  const F = () => [{ key: 'rid', req: true, label: '住民' }, { key: 'title' }, { key: 'date' }, { key: 'time' }, { key: 'handover', type: 'bool' }].concat((n.kind === 'SOAP' ? ['S', 'O', 'A', 'P'] : n.kind === 'DAR' ? ['D', 'A', 'R'] : ['text']).map(k => ({ key: k })));
   window.__noteDraft = { n, body, F };
   openModal(id ? '編輯照護紀錄' : '新增照護紀錄', body(), () => {
     const o = readForm(F()); if (!o) return false;
     if (!noteText(Object.assign({ kind: n.kind }, o)).trim()) { toast('紀錄內容是空的', 'bad'); return false; }
-    save('notes', Object.assign(n, o)); toast('已儲存照護紀錄' + (o.handover ? '，已列入交班' : ''));
+    Object.assign(n, o); const made = applyNoteLinks(n); save('notes', n); toast('已儲存照護紀錄' + (made.length ? `，並登錄：${made.join('、')}` : '') + (n.handover ? '，已列入交班' : ''));
   }, { extraBtn: id ? `<button class="btn danger" data-act="delNote" data-id="${id}">刪除</button>` : '' });
   $('#mbody').addEventListener('focusin', e => { if (e.target.tagName === 'TEXTAREA') window.__noteTA = e.target; });
 }
@@ -157,6 +157,7 @@ ROUTES.batch = () => {
   return `<div class="hd"><div><h1>批次登錄</h1><p class="sub">醫師巡診、藥師評估、家屬電訪、體重、疫苗一次登錄全部住民。系統會先勾好「到期」的住民。</p></div></div>
   <div class="chips">${Object.keys(BATCH_TYPES).map(k => `<button class="chip ${k === batchType ? 'on' : ''}" data-act="batchType" data-k="${esc(k)}">${esc(k)}</button>`).join('')}</div>
   <div class="card"><div class="grid g3"><label class="f">日期<input type="date" id="bDate" value="${d}"></label>${t.kind === 'contact' ? `<label class="f" style="grid-column:span 2">共同內容<input id="bCommon" value="${esc(t.def)}"></label>` : ''}</div>
+  ${t.kind === 'vaccine' ? '<div class="checks"><label><input type="checkbox" id="bNote" checked> 同時寫入護理紀錄（施打疫苗範本，已接種者）</label></div>' : ''}
   ${t.kind !== 'weight' ? '<div class="row" style="margin-bottom:8px"><button class="btn sm" data-act="bPick" data-v="all">全選</button><button class="btn sm" data-act="bPick" data-v="due">只選到期</button><button class="btn sm" data-act="bPick" data-v="none">全不選</button></div>' : '<p class="small muted">直接輸入本次體重，Enter 跳下一位；30 天內變化 ≥ 5% 會標紅（B19）。</p>'}
   <div class="tw"><table class="t" id="bTable">${t.kind === 'weight' ? '<tr><th>住民</th><th>上次</th><th>本次 kg</th><th>變化</th></tr>' : `<tr><th></th><th>住民</th><th>${t.kind === 'contact' ? '個別內容' : '狀態'}</th></tr>`}${res.map(row).join('')}</table></div>
   <div class="row" style="margin-top:12px"><span class="sp"></span><span id="bCount" class="small muted"></span><button class="btn pri" data-act="bSave">儲存</button></div></div>`;
@@ -182,7 +183,8 @@ ACT.bSave = () => {
     if (t.kind === 'weight') { const v = tr.querySelector('[data-kg]').value; if (!v) return; if (+v < 20 || +v > 200) { alerts.push(resLabel(resById(rid)) + ' 數值不合理'); return; } save('weights', { rid, date: d, kg: +v }); n++; const wa = weightAlert(rid); if (wa) alerts.push(`${resById(rid).name} ${wa.pct.toFixed(1)}%`); return; }
     if (!tr.querySelector('[data-pick]').checked) return;
     if (t.kind === 'contact') { save('contacts', { rid, kind: batchType, date: d, content: tr.querySelector('[data-note]').value.trim() || $('#bCommon').value.trim(), with: '' }); n++; }
-    else { const s = tr.querySelector('[data-vs]').value; save('vaccines', { rid, kind: t.v, date: d, refused: !!s, reason: s }); n++; }
+    else { const s = tr.querySelector('[data-vs]').value; save('vaccines', { rid, kind: t.v, date: d, refused: !!s, reason: s }); n++;
+      if (!s && $('#bNote') && $('#bNote').checked) save('notes', { rid, date: d, time: new Date().toTimeString().slice(0, 5), kind: '一般', title: '施打疫苗', disc: myRole(), handover: false, text: NOTE_TEMPLATES['施打疫苗'].text({ vac: t.v === '流感' ? '流感疫苗' : '新冠疫苗', doc: '巡診醫師', consent: '經家屬同意' }) }); }
   });
   if (!n) { toast('沒有選取任何住民', 'bad'); return; }
   logAccess(`批次登錄${batchType} ${n} 位`);

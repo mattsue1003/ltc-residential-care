@@ -191,7 +191,7 @@ function openEvent(id, rid, type) {
     ];
     return base;
   };
-  const render = () => `<label class="f req"><span>事件類別</span><select id="evTypeSel">${[...Object.keys(EVENT_TYPES), '管路移除'].map(t => `<option${t === e.type ? ' selected' : ''}>${t}</option>`).join('')}</select></label>${formHTML(draw(), e)}<div class="f"><span class="small muted">照片（傷口、現場；壓傷建議每次換藥拍照並放量尺）</span>${photoStrip('event:' + e.id)}</div><p class="small muted">原因分析與處置填寫完整，才會計為「已逐案分析」。</p>`;
+  const render = () => `<label class="f req"><span>事件類別</span><select id="evTypeSel">${[...Object.keys(EVENT_TYPES), '管路移除'].map(t => `<option${t === e.type ? ' selected' : ''}>${t}</option>`).join('')}</select></label>${formHTML(draw(), e)}${eventPhraseHTML(e.type)}<div class="f"><span class="small muted">照片（傷口、現場；壓傷建議每次換藥拍照並放量尺）</span>${photoStrip('event:' + e.id)}</div><p class="small muted">原因分析與處置填寫完整，才會計為「已逐案分析」。</p>`;
   openModal(e._new ? '登錄異常事件' : `${e.type}事件`, render(), () => {
     const F = draw($('#evTypeSel').value); const o = readForm(F); if (!o) return false; o.type = $('#evTypeSel').value;
     if (o.status === '結案' && !(o.cause && o.action)) { toast('結案前請完成原因分析與處置', 'bad'); return false; }

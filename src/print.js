@@ -1,5 +1,13 @@
 /* ===== A4 列印表單 ===== */
+let __outPages = null;
 function doPrint(pages) {
+  __outPages = pages;
+  const title = ((pages[0] || '').match(/<h1>(.*?)<\/h1>/) || [, '紀錄'])[1].replace(/<[^>]+>/g, '');
+  openModal(`輸出：${title}`, `<p class="small">共 ${pages.length} 頁，A4 版面。</p><div class="grid g2"><button class="btn pri" data-act="outPrint" style="padding:16px">列印／另存 PDF<div class="small" style="opacity:.85">在列印視窗的「目的地」選「另存為 PDF」</div></button><button class="btn" data-act="outWord" style="padding:16px">下載 Word 檔<div class="small muted">可在 Word 編修後再列印</div></button></div>`, null, { noFocus: true });
+}
+ACT.outPrint = () => { closeModal(); realPrint(__outPages); };
+ACT.outWord = () => { closeModal(); downloadWord(__outPages); };
+function realPrint(pages) {
   $('#printArea').innerHTML = pages.map(p => `<div class="pg">${p}</div>`).join('');
   document.body.classList.add('printing');
   const done = () => { document.body.classList.remove('printing'); window.removeEventListener('afterprint', done); };
@@ -136,7 +144,7 @@ function planTable(p) {
 PR.notes = (rid, m) => {
   m = m || today().slice(0, 7); const r = resById(rid); logAccess('列印照護紀錄', rid);
   const list = DB.notes.filter(n => n.rid === rid && n.date.startsWith(m)).sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-  doPrint([pgHead('照護紀錄', `<span>${m.slice(0, 4) - 1911} 年 ${+m.slice(5)} 月</span>`) + resLine(r) + `<table><tr><th style="width:14%">日期時間</th><th style="width:10%">職類</th><th>紀錄內容</th><th style="width:11%">簽名</th></tr>${list.map(n => `<tr><td>${roc(n.date)}<br>${esc(n.time || '')}</td><td>${esc(n.disc || '')}</td><td style="white-space:pre-wrap">${esc(noteText(n))}</td><td>${esc((n.by || '').replace(/（.*）/, ''))}</td></tr>`).join('') || '<tr><td colspan="4">本月無紀錄</td></tr>'}</table>`]);
+  doPrint([pgHead('照護紀錄', `<span>${m.slice(0, 4) - 1911} 年 ${+m.slice(5)} 月</span>`) + resLine(r) + `<table><tr><th style="width:14%">日期時間</th><th style="width:10%">職類</th><th>紀錄內容</th><th style="width:11%">簽名</th></tr>${list.map(n => `<tr><td>${roc(n.date)}<br>${esc(n.time || '')}</td><td>${esc(n.disc || '')}</td><td style="white-space:pre-wrap">${n.title ? `【${esc(n.title)}】` : ''}${esc(noteText(n))}</td><td>${esc((n.by || '').replace(/（.*）/, ''))}</td></tr>`).join('') || '<tr><td colspan="4">本月無紀錄</td></tr>'}</table>`]);
 };
 ACT.printNotes = el => PR.notes(el.dataset.id);
 ACT.printResPack = el => PR.resPack(el.dataset.id);
