@@ -214,6 +214,7 @@ async function trialCheckUpdate(force) {
   if (Cloud.on) return false;
   let f; try { f = await fetch('trial.enc.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null); } catch (e) { return false; }
   if (!f) return false;
+  if (!DB.settings.trial && /試用/.test(DB.settings.org || '')) DB.settings.trial = true; // 早期匯入的試用資料沒有標記
   const isTrial = !DB.residents.length || DB.settings.trial;
   if (!force && (!isTrial || DB.settings.trialAt === f.__at)) return false;
   const pw = trialPwSaved();

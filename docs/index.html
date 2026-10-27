@@ -224,7 +224,7 @@ footer.cr{color:var(--muted);font-size:12px;margin-top:30px;text-align:center}
   <main></main>
 </div>
 <div id="modal"></div><div id="toast" role="status" aria-live="polite"></div><div id="printArea"></div>
-<script>const APP_BUILD = '301ec7a057';
+<script>const APP_BUILD = '3f3d0f3533';
 /* ---- scales.js ---- */
 /* 評估量表定義：自動計分、判讀、敘述句、照顧計畫建議 */
 const SCALES = {
@@ -2422,6 +2422,7 @@ async function trialCheckUpdate(force) {
   if (Cloud.on) return false;
   let f; try { f = await fetch('trial.enc.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null); } catch (e) { return false; }
   if (!f) return false;
+  if (!DB.settings.trial && /試用/.test(DB.settings.org || '')) DB.settings.trial = true; // 早期匯入的試用資料沒有標記
   const isTrial = !DB.residents.length || DB.settings.trial;
   if (!force && (!isTrial || DB.settings.trialAt === f.__at)) return false;
   const pw = trialPwSaved();
