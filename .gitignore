@@ -1,0 +1,9 @@
+node_modules/
+cloud/config.json
+cloud/build/
+cloud/public/
+cloud/*.log
+cloud/.firebase/
+dist/
+.DS_Store
+.claude/

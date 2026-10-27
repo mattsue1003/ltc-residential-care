@@ -1,0 +1,17 @@
+rules_version = '2';
+// 照片：上傳前已在裝置端加密；只有啟用中員工可存取
+service firebase.storage {
+  match /b/{bucket}/o {
+    function staff() {
+      return request.auth != null && __MFA__
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid))
+        && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.active == true;
+    }
+    match /photos/{id} {
+      allow read, delete: if staff();
+      allow create: if staff() && request.resource.size < 3 * 1024 * 1024 && request.resource.contentType == 'text/plain' && id.matches('^[a-z0-9]+$');
+      allow update: if false;
+    }
+    match /{all=**} { allow read, write: if false; }
+  }
+}

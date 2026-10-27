@@ -1,0 +1,2 @@
+{ "org": "幸福示範老人長期照顧中心（養護型）", "adminEmail": "director@example.com", "requireMfa": false, "emulator": true,
+  "firebase": { "apiKey": "demo-key", "authDomain": "demo-ltc.firebaseapp.com", "projectId": "demo-ltc", "storageBucket": "demo-ltc.appspot.com", "appId": "demo" } }

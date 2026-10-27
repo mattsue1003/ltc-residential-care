@@ -1,0 +1,81 @@
+rules_version = '2';
+// 長照照護紀錄系統：Firestore 安全規則
+// 原則：預設全部拒絕；只有「啟用中、已通過兩步驟驗證」的員工可讀寫加密後的紀錄。
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function signedIn() { return request.auth != null; }
+    function mfa() { return __MFA__; }
+    function userPath(uid) { return /databases/$(db)/documents/users/$(uid); }
+    function invitePath(email) { return /databases/$(db)/documents/invites/$(email); }
+    function metaPath() { return /databases/$(db)/documents/facility/meta; }
+    function me() { return get(userPath(request.auth.uid)).data; }
+    function active() { return signedIn() && exists(userPath(request.auth.uid)) && me().active == true; }
+    function staff() { return active() && mfa(); }
+    function admin() { return staff() && me().role in ['機構主任', '系統管理員']; }
+    function email() { return request.auth.token.email.lower(); }
+    function sha(s) { return hashing.sha256(s).toHexString().lower(); }
+    function onlyKeys(keys) { return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys); }
+
+    match /facility/meta {
+      allow read: if signedIn() && exists(userPath(request.auth.uid));
+      // 只有設定檔指定的主任信箱、且機構尚未建立時，才能建立一次
+      allow create: if signedIn() && email() == '__ADMIN_EMAIL__' && !exists(metaPath())
+                    && getAfter(userPath(request.auth.uid)).data.role == '機構主任';
+      allow update: if admin();
+      allow delete: if false;
+    }
+
+    match /users/{uid} {
+      allow get: if signedIn() && (request.auth.uid == uid || active());
+      allow list: if active();
+      allow create: if signedIn() && request.auth.uid == uid && request.resource.data.email == email()
+        && request.resource.data.active == true && request.resource.data.mfa == false && (
+          // 建立機構：主任信箱＋機構尚未存在＋同一批次建立 meta
+          (email() == '__ADMIN_EMAIL__' && !exists(metaPath()) && existsAfter(metaPath()) && request.resource.data.role == '機構主任')
+          // 接受邀請：必須持有邀請碼（比對雜湊），職類以邀請為準
+          || (exists(invitePath(email())) && get(invitePath(email())).data.type == 'invite'
+              && request.resource.data.role == get(invitePath(email())).data.role
+              && request.resource.data.name == get(invitePath(email())).data.name
+              && sha(request.resource.data.inviteCode) == get(invitePath(email())).data.codeHash)
+        );
+      allow update: if admin() && onlyKeys(['role', 'active'])
+        || (request.auth.uid == uid && onlyKeys(['mfa', 'inviteCode', 'resetCode']) && request.resource.data.get('resetCode', '') == '' && request.resource.data.get('inviteCode', '') == '')
+        || (request.auth.uid == uid && onlyKeys(['mfa', 'inviteCode', 'resetCode']) && request.resource.data.mfa == true && resource.data.mfa == false)
+        // 重設密碼：必須持有主任產生的重設碼
+        || (request.auth.uid == uid && onlyKeys(['wrapped', 'resetCode']) && exists(invitePath(email()))
+            && get(invitePath(email())).data.type == 'reset' && sha(request.resource.data.resetCode) == get(invitePath(email())).data.codeHash)
+        // 主任用緊急復原碼救回
+        || (request.auth.uid == uid && onlyKeys(['wrapped', 'resetCode']) && resource.data.role == '機構主任'
+            && sha(request.resource.data.resetCode) == get(metaPath()).data.recoveryHash);
+      allow delete: if false;
+    }
+
+    match /invites/{em} {
+      allow get: if admin() || (signedIn() && email() == em);
+      allow list: if admin();
+      allow create, update: if admin() && request.resource.data.by == request.auth.uid;
+      allow delete: if admin() || (signedIn() && email() == em);
+    }
+
+    match /records/{id} {
+      allow read: if staff();
+      allow create, update: if staff()
+        && request.resource.data.keys().hasOnly(['c', 'del', 'd', 'u', 'by'])
+        && request.resource.data.by == request.auth.uid
+        && request.resource.data.u == request.time
+        && request.resource.data.d is string && request.resource.data.d.size() < 900000
+        && id.matches('^[a-z]+__[A-Za-z0-9_\\-]+$');
+      allow delete: if false;
+    }
+
+    match /audit/{id} {
+      allow read: if admin();
+      allow create: if signedIn() && exists(userPath(request.auth.uid))
+        && request.resource.data.keys().hasOnly(['uid', 'at', 'd'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.at == request.time;
+      allow update, delete: if false;
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}

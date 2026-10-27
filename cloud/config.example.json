@@ -1,0 +1,2 @@
+{ "org": "臺中市私立○○老人長期照顧中心（養護型）", "adminEmail": "主任的信箱@example.com", "requireMfa": true, "emulator": false,
+  "firebase": { "apiKey": "從 Firebase 專案設定複製", "authDomain": "", "projectId": "", "storageBucket": "", "appId": "" } }

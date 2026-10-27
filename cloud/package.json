@@ -1,0 +1,1 @@
+{"name":"ltc-cloud","private":true,"version":"1.0.0","scripts":{"bundle":"esbuild sdk-entry.js --bundle --format=iife --global-name=FB --minify --outfile=../src/vendor/firebase.js"},"dependencies":{"esbuild":"0.28.2","firebase":"11.10.0","firebase-tools":"15.34.1","qrcode-generator":"2.0.4"}}
