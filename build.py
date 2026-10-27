@@ -6,6 +6,9 @@ S = ROOT / 'src'
 JS = ['scales.js', 'indicators.js', 'store.js', 'logic.js', 'ui.js', 'pages_main.js', 'pages_care.js', 'pages_qa.js', 'print.js', 'storage.js', 'cloud.js', 'templates.js', 'qi.js', 'pages_extra.js', 'demo.js', 'main.js']
 css = (S / 'styles.css').read_text()
 js = '\n'.join(f'/* ---- {f} ---- */\n' + (S / f).read_text() for f in JS)
+import hashlib, json
+BUILD = hashlib.sha1((css + js).encode()).hexdigest()[:10]
+js = f"const APP_BUILD = '{BUILD}';\n" + js
 html = f'''<!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -29,6 +32,7 @@ out = ROOT / 'dist'; out.mkdir(exist_ok=True)
 (out / 'index.html').write_text(html)
 (ROOT / 'docs').mkdir(exist_ok=True)
 (ROOT / 'docs' / 'index.html').write_text(html)
+(ROOT / 'docs' / 'version.json').write_text(json.dumps({'build': BUILD}))
 print('built', len(html) // 1024, 'KB')
 
 # ---- 雲端版：cloud/public（index.html + app.css + app.js），規則依設定產生 ----

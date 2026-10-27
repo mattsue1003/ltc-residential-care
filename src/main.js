@@ -27,7 +27,22 @@ function setupSearch() {
   document.addEventListener('keydown', e => { if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); inp.focus(); } });
 }
 
+// 網頁有新版本時自動換新（GitHub Pages 會讓瀏覽器快取舊版 10 分鐘）
+async function checkAppVersion() {
+  if (!/^https?:/.test(location.protocol)) return false;
+  try {
+    const v = await fetch('version.json', { cache: 'no-store' }).then(r => r.ok ? r.json() : null);
+    if (v && v.build && v.build !== APP_BUILD && sessionStorage.getItem('appReload') !== v.build) {
+      sessionStorage.setItem('appReload', v.build);
+      const q = new URLSearchParams(location.search); q.set('v', v.build);
+      location.replace(location.pathname + '?' + q + location.hash); return true;
+    }
+  } catch (e) {}
+  return false;
+}
 async function boot() {
+  if (await checkAppVersion()) return;
+  if (/[?&]v=/.test(location.search)) { const q = new URLSearchParams(location.search); q.delete('v'); history.replaceState(null, '', location.pathname + (q.toString() ? '?' + q : '') + location.hash); }
   try { const t = localStorage.getItem('ltc-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
   await Store.open();
   if (Cloud.on) return bootCloud();
