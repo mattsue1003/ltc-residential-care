@@ -237,6 +237,7 @@ async function loadTrial(pass, f, silent) {
     const pkg = JSON.parse(txt), data = pkg.data || pkg, user = DB.settings.user;
     COLLECTIONS.forEach(c => { DB[c] = data[c] || (['settings', 'quarterly', 'accred'].includes(c) ? {} : []); Store.mark(c); });
     DB.settings.trial = true; DB.settings.trialAt = f.__at; if (user) DB.settings.user = user;
+    trialSimFill(true);
     try { localStorage.setItem('ltcTrialPw', pass); } catch (e) {}
     await Store.flush(); if (!silent) closeModal(); updateBrand(); toast(`已載入${silent ? '最新版' : ''}試用資料：${DB.residents.length} 位住民（${(f.__at || '').slice(0, 10)} 版）`);
     if (!DB.settings.user) askUser(true); if (silent) render(); else go('dash'); return true;

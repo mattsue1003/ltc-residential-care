@@ -51,7 +51,7 @@ async function boot() {
   if (!location.hash || location.hash === '#/' || location.hash === '#/dash') { const role = myRole(); if (role === '照顧服務員') location.hash = '#/daily'; else if (role === '社工人員') location.hash = '#/notes'; }
   render();
   const force = /[?&]trial\b/.test(location.search); if (force) history.replaceState(null, '', location.pathname + location.hash);
-  if (!(await trialCheckUpdate(force)) && !DB.settings.user) askUser(true);
+  if (!(await trialCheckUpdate(force))) { if (DB.settings.trial && trialSimFill()) { await Store.flush(); render(); } if (!DB.settings.user) askUser(true); }
   // 自動逾時鎖定（有密碼時，閒置 15 分鐘）
   let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { if (modalDirty) { reset(); return; } await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
   ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, reset)); reset();

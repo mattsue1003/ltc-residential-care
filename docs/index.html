@@ -2444,6 +2444,7 @@ async function loadTrial(pass, f, silent) {
     const pkg = JSON.parse(txt), data = pkg.data || pkg, user = DB.settings.user;
     COLLECTIONS.forEach(c => { DB[c] = data[c] || (['settings', 'quarterly', 'accred'].includes(c) ? {} : []); Store.mark(c); });
     DB.settings.trial = true; DB.settings.trialAt = f.__at; if (user) DB.settings.user = user;
+    trialSimFill(true);
     try { localStorage.setItem('ltcTrialPw', pass); } catch (e) {}
     await Store.flush(); if (!silent) closeModal(); updateBrand(); toast(`已載入${silent ? '最新版' : ''}試用資料：${DB.residents.length} 位住民（${(f.__at || '').slice(0, 10)} 版）`);
     if (!DB.settings.user) askUser(true); if (silent) render(); else go('dash'); return true;
@@ -3791,6 +3792,172 @@ function loadDemo() {
   COLLECTIONS.forEach(c => Store.mark(c));
 }
 
+/* ===== 試用資料：模擬補齊今年資料（原系統沒有的部分），所有模擬紀錄標記 sim:true ===== */
+const SIM_BY = { nurse: '模擬護理師（護理人員）', sw: '模擬社工（社工人員）', ot: '模擬職能治療師（職能治療師）', pt: '模擬物理治療師（物理治療師）', diet: '模擬營養師（營養師）' };
+function trialSimFill(force) {
+  const T = today();
+  if (!force && DB.settings.simUntil === T) return 0;
+  const Y0 = T.slice(0, 4) + '-01-02';
+  let added = 0;
+  const hash = s => { let h = 7; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 2147483647; return h || 1; };
+  DB.residents.forEach((r, idx) => {
+    if (!r.admitDate) return;
+    let seed = hash(r.id); const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const pick = a => a[Math.floor(rnd() * a.length)], between = (a, b) => a + Math.round(rnd() * (b - a));
+    const end = r.dischargeDate && r.dischargeDate < T ? r.dischargeDate : T;
+    const start = r.admitDate > Y0 ? addDays(r.admitDate, 1) : Y0;
+    if (start > end) return;
+    // 住院期間（不在機構）
+    const hosp = DB.events.filter(e => e.rid === r.id && /住院/.test(e.type)).map(e => [e.date, e.returnDate || (r.status === '住院中' ? T : addDays(e.date, 5))]);
+    const away = d => hosp.some(([a, b]) => d >= a && d <= b);
+    // 個人特徵（只補空白欄位）
+    const realB = DB.assessments.filter(a => a.rid === r.id && a.type === 'barthel' && !a.sim).sort((a, b) => b.date.localeCompare(a.date))[0];
+    const tubes = r.tubes || {};
+    const B = realB ? realB.score : tubes.ng ? between(0, 15) : pick([20, 35, 45, 60, 70, 85, 90]);
+    const fill = (k, v) => { if (r[k] === undefined || r[k] === '' || r[k] === null) r[k] = v; };
+    fill('mobility', B <= 15 ? (tubes.ng && rnd() < 0.5 ? '臥床不宜移動' : '臥床可移動') : B <= 55 ? '輪椅' : B <= 85 ? '輔具行走' : '可獨立行走');
+    fill('consciousness', B <= 10 && tubes.ng && rnd() < 0.4 ? '意識不清' : rnd() < 0.35 ? '嗜睡／混亂' : '清醒');
+    fill('incontinence', B <= 50);
+    fill('diet', tubes.ng ? '管灌' : pick(['軟質', '細碎', '一般', '軟質']));
+    fill('dx', pick(['失智症、高血壓', '腦中風後遺症、高血壓', '巴金森氏症', '糖尿病、慢性腎臟病', '退化性關節炎、骨質疏鬆', '慢性阻塞性肺病', '失智症、糖尿病', '腦中風、吞嚥困難', '心衰竭、高血壓']) + '（模擬）');
+    fill('height', r.gender === '女' ? between(145, 158) : between(155, 170));
+    fill('religion', pick(['佛教', '道教', '民間信仰', '基督教', '無']));
+    fill('contactRel', pick(['長子', '長女', '次子', '女兒', '配偶']));
+    fill('portraitConsent', rnd() < 0.7);
+    const diabetic = /糖尿病/.test(r.dx || '');
+    const bed = /臥床/.test(r.mobility || '');
+    // 通用：依週期補齊（已有紀錄的區間不重複）
+    const series = (dates, every, add, from) => {
+      const E = dates.slice().sort(); let t = from || addDays(start, between(0, 6)), i = 0, guard = 0;
+      while (t <= end && guard++ < 400) {
+        while (i < E.length && E[i] < addDays(t, -every + 1)) i++;
+        if (i < E.length && E[i] <= addDays(t, every - 1)) { t = addDays(E[i], every - between(1, 6)); i++; continue; }
+        if (!away(t)) { add(t); added++; } t = addDays(t, every - between(1, 6));
+      }
+    };
+    // 評估量表
+    const mk = (type, target, date) => {
+      const sc = SCALES[type], ans = {}; let remain = target;
+      sc.items.forEach((it, i) => { const opts = it[1].map(o => o[0]).sort((a, b) => b - a); const left = sc.items.length - i - 1; let v = opts[opts.length - 1];
+        for (const o of opts) { if (o <= remain - left * Math.min(...opts) + 0.01) { v = o; break; } } ans[i] = v; remain -= v; });
+      const extra = type === 'mna' ? { height: r.height } : type === 'pain' ? { nrs: target, site: target >= 3 ? pick(['右膝', '下背', '左髖', '肩膀']) : '' } : type === 'spmsq' ? { edu: '國小（不校正）' } : {};
+      const { score, level } = scoreScale(type, ans, extra);
+      return { id: uid(), rid: r.id, type, date, answers: ans, extra, score, level: level[0], cls: level[1], note: '模擬資料', by: type === 'gds' || type === 'spmsq' ? SIM_BY.sw : type === 'mna' ? SIM_BY.diet : SIM_BY.nurse, sim: true, created: nowISO() };
+    };
+    const target = {
+      barthel: k => Math.max(0, Math.min(100, Math.round((B - k * between(0, 2)) / 5) * 5)),
+      spmsq: () => B < 40 ? between(5, 9) : between(1, 4), gds: () => between(1, 8), mna: () => B < 30 ? between(5, 9) : between(9, 13),
+      morse: () => Math.round((bed ? between(25, 45) : B < 70 ? between(45, 80) : between(15, 45)) / 5) * 5,
+      braden: () => B <= 20 ? between(10, 14) : B <= 60 ? between(14, 18) : between(18, 22), pain: () => rnd() < 0.7 ? between(0, 2) : between(3, 5),
+    };
+    const late = idx % 9 === 4; // 少數住民最後一次故意未做，用來看提醒
+    CORE_SCALES.forEach(t => {
+      const ex = DB.assessments.filter(a => a.rid === r.id && a.type === t).map(a => a.date); let k = 0;
+      series(ex, scaleCycle(t), date => {
+        if (late && diffDays(date, T) < 20) { added--; return; }
+        if (t === 'social') {
+          const a = { id: uid(), rid: r.id, type: 'social', date, answers: {}, extra: { adapt: diffDays(r.admitDate, date) < 60 ? '尚在適應' : pick(['適應良好', '適應良好', '尚在適應']), mood: pick(['穩定', '穩定', '偶有低落或焦慮']), family: pick(['家屬定期探視', '家屬定期探視', '家屬偶爾探視', '少有聯繫']), econ: pick(['自費無虞', '自費無虞', '低收／中低收']), faith: r.religion, hobby: pick(['聽老歌', '看電視', '種花', '下象棋', '摺紙', '唸經']), wish: pick(['希望身體健康、家人常來看', '想多出去走走', '希望少點疼痛']), acp: pick(['未討論', '已初步討論', '已簽署 DNR']) }, score: null, by: SIM_BY.sw, note: '模擬資料', sim: true, created: nowISO() };
+          const lv = SCALES.social.level(a.extra); a.level = lv[0]; a.cls = lv[1]; DB.assessments.push(a);
+        } else DB.assessments.push(mk(t, target[t](k++), date));
+      });
+    });
+    // 照顧計畫（入住／年初擬定，每半年與家屬共同修正）
+    const pl = DB.plans.filter(p => p.rid === r.id).map(p => p.date);
+    series(pl, 183, date => {
+      const la = {}; DB.assessments.filter(a => a.rid === r.id && a.date <= addDays(date, 3)).sort((a, b) => a.date.localeCompare(b.date)).forEach(a => la[a.type] = a);
+      const nextEval = diffDays(T, addDays(date, 90)) < 0 ? addDays(date, 90) : addDays(date, 90) <= T ? addDays(date, 180) : addDays(date, 90);
+      const fam = addDays(date, between(1, 10));
+      DB.plans.push({ id: uid(), rid: r.id, date, problems: suggestProblems(r, la).map(s => Object.assign({}, s, { evalDate: addDays(date, 90) <= T && addDays(date, 183) > T ? addDays(date, 180) : addDays(date, 90), result: addDays(date, 90) <= T ? pick(['持續', '部分達成，持續', '持續']) : '持續', evalNote: addDays(date, 90) <= T ? '季評值：措施執行中，狀況穩定（模擬）' : '' })), participants: '護理師、社工、職能治療師、營養師、照服員', familyDate: fam <= T ? fam : '', familyName: (r.contactRel || '家屬'), by: SIM_BY.nurse, sim: true, created: nowISO() });
+    }, r.admitDate > Y0 ? addDays(r.admitDate, 3) : addDays(Y0, between(5, 25)));
+    // 體重（每月）
+    let kg = (r.gender === '女' ? 46 : 56) + rnd() * 12; const lossM = idx % 15 === 7 ? T.slice(0, 7) : '';
+    series(DB.weights.filter(w => w.rid === r.id).map(w => w.date), 30, date => { kg += (rnd() - 0.5) * 1.1; if (date.slice(0, 7) === lossM) kg *= 0.94; DB.weights.push({ id: uid(), rid: r.id, date, kg: Math.round(kg * 10) / 10, by: SIM_BY.nurse, sim: true, created: nowISO() }); });
+    // 訪視聯繫
+    const C = (kind, every, texts, by) => series(DB.contacts.filter(c => c.rid === r.id && c.kind === kind).map(c => c.date), every, date => DB.contacts.push({ id: uid(), rid: r.id, kind, date, content: pick(texts), with: '', by, sim: true, created: nowISO() }));
+    C('醫師巡診', contactEvery('醫師巡診') || 30, ['生命徵象穩定，續原醫囑。', '血壓控制可，續服降壓藥。', '肺音清，無明顯不適，續觀察。', '皮膚完整，食慾可，續原醫囑。'], '模擬特約醫師（醫師）');
+    C('藥師評估', 90, ['用藥無重複或交互作用。', '建議睡前安眠藥減量，已與醫師討論。', '用藥合理，提醒注意姿位性低血壓。'], '模擬藥師（藥師）');
+    if (!r.noFamily) C('家屬電訪／會談', 90, ['說明近況與照顧計畫，家屬了解並同意。', '家屬來訪，討論飲食與活動安排。'], SIM_BY.sw);
+    C('年度健康檢查', 365, ['胸部 X 光、血液常規、生化、尿液檢查，醫師判讀無明顯異常。', '健檢：輕度貧血，醫師建議追蹤。'], SIM_BY.nurse);
+    // 每日紀錄（生命徵象、下床、洗澡；翻身／如廁只補近 30 天）
+    const have = new Set(DB.daily.filter(d => d.rid === r.id).map(d => d.date));
+    const SL = ['00', '02', '04', '06', '08', '10', '12', '14', '16', '18', '20', '22'], TS = ['平躺', '左側', '右側', '半坐'];
+    for (let d = start, i = 0; d <= end; d = addDays(d, 1), i++) {
+      if (have.has(d) || away(d)) continue;
+      if (d === T && idx % 7 === 3) continue; // 今天少數人還沒量
+      const x = { id: uid(), rid: r.id, date: d, temp: +(36.1 + rnd() * 0.9).toFixed(1), sbp: between(108, 148), dbp: between(62, 84), pulse: between(64, 90), resp: between(16, 20), spo2: between(94, 99),
+        pain: rnd() < 0.85 ? 0 : between(1, 4), oob: r.mobility === '臥床不宜移動' ? 0 : rnd() < 0.06 ? 1 : between(2, 3), bath: (i + idx) % 2 === 0, oral: true, bowel: rnd() < 0.6, note: '', by: SIM_BY.nurse, sim: true, created: nowISO() };
+      if (diabetic) x.sugar = between(105, 210);
+      if (diffDays(d, T) <= 30) {
+        if (bed) { x.turns = {}; SL.forEach((s, k) => { if (d === T && +s > new Date().getHours()) return; if (rnd() < 0.95) x.turns[s] = TS[k % 4]; }); }
+        if (r.incontinence) { x.toilets = {}; SL.forEach(s => { if (d === T && +s > new Date().getHours()) return; if (rnd() < 0.85) x.toilets[s] = pick(['自解', '協助如廁', '換尿布']); }); }
+      }
+      DB.daily.push(x); added++;
+    }
+    // 疫苗（本季流感）
+    if (+T.slice(5, 7) >= 10 && !DB.vaccines.some(v => v.rid === r.id && v.kind === '流感' && v.date >= T.slice(0, 4) + '-09-01') && idx % 6 !== 5) {
+      const d = addDays(T.slice(0, 4) + '-10-14', between(0, 8)); if (d <= T) { DB.vaccines.push(Object.assign({ id: uid(), rid: r.id, kind: '流感', date: d, by: SIM_BY.nurse, sim: true, created: nowISO() }, idx % 10 === 1 ? { refused: true, reason: '家屬考慮中，暫不施打' } : {})); added++; }
+    }
+    // 職能／社工紀錄（每月一筆）
+    const NT = (disc, by, texts) => series(DB.notes.filter(n => n.rid === r.id && n.disc === disc).map(n => n.date), 30, date => DB.notes.push({ id: uid(), rid: r.id, date, time: pick(['10:00', '14:30', '15:10']), disc, kind: '一般', text: pick(texts), by, sim: true, created: nowISO() }));
+    NT('職能治療師', SIM_BY.ot, ['參與上肢功能活動 30 分鐘（套圈、木釘板），可完成 8 成，耐力尚可。', '進食訓練：使用易握湯匙與防滑墊，可自行進食約一半，持續訓練。', '認知訓練：現實導向與懷舊卡片，定向感部分正確，參與度佳。', '轉位訓練：床↔輪椅需一人輕扶，提醒煞車與腳踏板。', '評估輪椅擺位：加背墊改善側傾，坐姿耐受達 1 小時。']);
+    NT('社工人員', SIM_BY.sw, ['個別關懷會談，住民情緒穩定，表示想念家人，已轉知家屬。', '協助參加團體活動（懷舊歌唱），互動良好。', '與家屬電話聯繫說明近況，家屬了解。', '住民適應良好，與室友相處融洽，持續關懷。']);
+  });
+  // 約束（護理紀錄提到約束的住民）
+  const rsIds = [...new Set(DB.notes.filter(n => !n.sim && /約束/.test(JSON.stringify(n))).map(n => n.rid))];
+  rsIds.forEach((rid, i) => {
+    const r = resById(rid); if (!r || DB.restraints.some(x => x.rid === rid)) return;
+    const first = DB.notes.filter(n => n.rid === rid && /約束/.test(JSON.stringify(n))).map(n => n.date).sort()[0];
+    const s = first < T.slice(0, 4) + '-01-01' ? T.slice(0, 4) + '-01-05' : first;
+    const ended = i % 3 === 2, endDate = ended ? addDays(s, 60) : '';
+    const consent = (() => { let c = s; while (addDays(c, 90) <= T && (!ended || addDays(c, 90) <= endDate)) c = addDays(c, 88); return c; })();
+    const checks = []; for (let k = 0; k < 30; k++) { const d = addDays(ended ? endDate : T, -k); if (d < s) break; checks.push({ date: d, time: '10:00', skin: '完整', circ: '正常', release: true, canStop: '否，仍需約束', by: SIM_BY.nurse }); }
+    DB.restraints.push({ id: uid(), rid, startDate: s, endDate, endReason: ended ? '改用離床警示墊與增加巡視' : '', judge: '醫師診斷', assessor: '模擬護理師', reasons: [r.tubes && r.tubes.ng ? '預防自拔管路' : '預防跌倒'], alternatives: ['增加巡視與陪伴', '處理疼痛、口渴、如廁等需求', '調整床高與床邊防護墊'], assessNote: '替代措施無效，經醫師評估需短期約束（模擬）。', form: r.tubes && r.tubes.ng ? '手部約束（手套）' : '腰部約束帶', hours: '8–16 小時', period: '夜間', care: '每 2 小時鬆脫活動、觀察末梢循環', consentBy: '家屬', consentRel: r.contactRel || '家屬', consentDate: consent, checks, sim: true, created: nowISO() }); added++;
+  });
+  // 事件：壓力性損傷、感染（讓品質指標有資料）
+  const R = DB.residents.filter(r => !r.dischargeDate && r.admitDate);
+  const evSim = (type, date, o) => { if (date > T || DB.events.some(e => e.sim && e.type === type && e.date === date)) return; DB.events.push(Object.assign({ id: uid(), type, date, time: '10:30', status: '結案', notify: ['家屬', '醫師'], by: SIM_BY.nurse, sim: true, created: nowISO() }, o)); added++; };
+  const y = T.slice(0, 4);
+  if (R.length > 10) {
+    evSim('壓力性損傷', y + '-03-11', { rid: R[3].id, site: '薦骨', stage: '第 2 級', origin: '機構內新發生', healDate: y + '-04-20', desc: '薦骨 2×2 cm 表皮破損。', immediate: '換藥、減壓氣墊床。', cause: '翻身間隔不確實、營養攝取不足。', action: '每 2 小時翻身並記錄，營養師調整配方。', improve: '翻身紀錄每班稽核。' });
+    evSim('壓力性損傷', y + '-08-02', { rid: R[9].id, site: '右足跟', stage: '第 1 級', origin: '機構內新發生', healDate: y + '-08-20', desc: '右足跟壓紅，按壓不退。', immediate: '足跟懸空減壓。', cause: '臥床足跟受壓。', action: '使用足跟減壓枕。', improve: '臥床住民足跟每日檢視。' });
+    [['-02-08', 2, '泌尿道感染'], ['-05-19', 6, '上呼吸道感染'], ['-07-23', 1, '下呼吸道感染（肺炎）'], ['-09-30', 8, '泌尿道感染'], ['-10-12', 4, '腸胃道（腹瀉）']].forEach(([md, i, infType]) =>
+      evSim('感染', y + md, { rid: R[i].id, infType, reported: '不需通報', desc: `${infType}，發燒 38.2℃。`, immediate: '通知醫師，依醫囑處置。', cause: infType.includes('泌尿') ? '留置導尿管、水分攝取不足。' : '季節性呼吸道疾病流行。', action: '依醫囑抗生素治療，3 天後退燒。', improve: '加強手部衛生與管路照護稽核。' }));
+  }
+  // 原系統匯入的事件：兩週前的補上模擬原因分析並結案，近兩週的留給你練習
+  const EA = { '跌倒': ['夜間自行下床如廁，未按呼叫鈴。', '加強夜間巡視、定時如廁、床旁放置離床警示墊。', '每月跌倒高風險名單於交班時提醒。'], '非計畫性住院': ['慢性病急性惡化。', '依醫囑住院治療，返院後重新評估。', '加強生命徵象異常即時通報。'], '緊急送醫': ['生命徵象異常，依醫師指示送醫。', '緊急處置並聯絡家屬陪同。', '檢視緊急送醫流程。'] };
+  DB.events.forEach(e => { if (e.sim || (e.cause && e.action) || diffDays(e.date, T) < 14) return; const t = EA[e.type] || ['原因分析中。', '持續追蹤。', '列入品質會議討論。'];
+    e.cause = e.cause || t[0] + '（模擬）'; e.action = e.action || t[1]; e.improve = e.improve || t[2]; e.status = '結案'; e.qaSign = e.qaSign || '模擬品管'; added++; });
+  // 機構層級：會議、演練、稽核等依週期補齊
+  const MT = { '緊急災害應變演練': ['夜間火災應變演練', '複合型災害（地震＋停電）應變演練', '風災水災應變桌上模擬'], '跨專業個案討論': ['高跌倒風險個案討論', '鼻胃管移除可行性討論', '體重下降個案營養討論'], '團體活動': ['懷舊歌曲團體', '園藝治療', '手作摺紙', '節慶活動', '桌遊認知團體', '音樂律動'], '教育訓練': ['約束替代措施', '感染管制與手部衛生', '跌倒預防', '安寧緩和照護'] };
+  let mi = 0;
+  facilityTasks().forEach(t => {
+    const ex = DB.meetings.filter(m => m.kind === t.kind).map(m => m.date);
+    let seed = hash(t.kind); const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const E = ex.sort(); let d = addDays(Y0, Math.floor(rnd() * 20)), i = 0, guard = 0;
+    while (d <= T && guard++ < 50) {
+      while (i < E.length && E[i] < addDays(d, -t.every + 1)) i++;
+      if (i < E.length && E[i] <= addDays(d, t.every - 1)) { d = addDays(E[i], t.every - 3); i++; continue; }
+      const titles = MT[t.kind]; const title = titles ? titles[mi++ % titles.length] : t.kind;
+      DB.meetings.push(Object.assign({ id: uid(), kind: t.kind, date: d, title, participants: '主任、護理長、社工、職能治療師、營養師', content: `${title}（模擬內容）`, decisions: '依討論結果執行並於下次會議追蹤（模擬）', followup: '', by: SIM_BY.nurse, sim: true, created: nowISO() },
+        t.kind === '緊急災害應變演練' ? { drillTypes: /夜間/.test(title) ? ['夜間演練', '火災'] : /複合/.test(title) ? ['複合型災害', '地震', '停電停水'] : ['桌上模擬', '風災水災'] } : {},
+        t.kind === '跨專業個案討論' ? { disciplines: ['護理', '社工', '職能治療', '營養', '照服員'] } : {},
+        t.kind === '團體活動' ? { count: 12 + Math.floor(rnd() * 10), participants: '住民、志工、社工、職能治療師' } : {}));
+      added++; d = addDays(d, t.every - 3);
+    }
+  });
+  // 已過去的月統計表與季 PDCA 標記完成（本月／本季保留給你試做）
+  const md = DB.settings.qiMonthDone || {};
+  for (let m = 1; m < +T.slice(5, 7) - 1; m++) { const k = `${y}-${String(m).padStart(2, '0')}`; if (!md[k]) md[k] = { by: SIM_BY.nurse, date: `${y}-${String(m + 1).padStart(2, '0')}-04` }; }
+  DB.settings.qiMonthDone = md;
+  const qn = Math.ceil(+T.slice(5, 7) / 3);
+  for (let q = 1; q < qn - 1; q++) { const k = `${y}-Q${q}`; if (!DB.quarterly[k]) DB.quarterly[k] = { done: true, doneDate: `${y}-${String(q * 3 + 1).padStart(2, '0')}-04` }; }
+  if (!DB.settings.staff) DB.settings.staff = { total: 26, flu: 22, covid: 14 };
+  if (!DB.settings.manager) DB.settings.manager = '模擬主任';
+  DB.settings.simUntil = T;
+  COLLECTIONS.forEach(c => Store.mark(c));
+  return added;
+}
+
 /* ---- main.js ---- */
 /* ===== 啟動 ===== */
 function updateBrand() {
@@ -3845,7 +4012,7 @@ async function boot() {
   if (!location.hash || location.hash === '#/' || location.hash === '#/dash') { const role = myRole(); if (role === '照顧服務員') location.hash = '#/daily'; else if (role === '社工人員') location.hash = '#/notes'; }
   render();
   const force = /[?&]trial\b/.test(location.search); if (force) history.replaceState(null, '', location.pathname + location.hash);
-  if (!(await trialCheckUpdate(force)) && !DB.settings.user) askUser(true);
+  if (!(await trialCheckUpdate(force))) { if (DB.settings.trial && trialSimFill()) { await Store.flush(); render(); } if (!DB.settings.user) askUser(true); }
   // 自動逾時鎖定（有密碼時，閒置 15 分鐘）
   let idle; const reset = () => { clearTimeout(idle); if (Store.key) idle = setTimeout(async () => { if (modalDirty) { reset(); return; } await Store.flush(); location.reload(); }, 15 * 60 * 1000); };
   ['click', 'keydown', 'touchstart'].forEach(ev => document.addEventListener(ev, reset)); reset();
