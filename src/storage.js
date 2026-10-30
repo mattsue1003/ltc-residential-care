@@ -247,25 +247,25 @@ async function loadTrial(pass, f, silent) {
 ACT.openTrial = () => openTrialLoader();
 
 /* --- 示範站登入／登出：每次登入都重新載入最新的示範資料 --- */
-const DEMO_ACCOUNT = 'demo';
+const DEMO_ACCOUNT = '1111';
 function demoLoggedIn() { try { return sessionStorage.getItem('demoIn') === '1'; } catch (e) { return false; } }
 function showDemoLogin() {
   if ($('#demoLogin')) return;
   document.body.insertAdjacentHTML('beforeend', `<div id="demoLogin" class="login-wrap"><form class="login-card" autocomplete="off">
     <div class="logo" style="margin:0 auto 8px">✓</div><h2>長照照護紀錄系統</h2><p class="muted small">示範站（資料皆已去識別化）</p>
-    <label class="f">帳號<input id="dlUser" value="" placeholder="demo" autocapitalize="off"></label>
-    <label class="f">密碼<input id="dlPw" type="password" placeholder="EEEE"></label>
-    <div class="login-hint">示範帳號：<b>demo</b>　密碼：<b>EEEE</b>（4 個大寫 E）<br><span class="small">此為示範用帳號，登入後會載入最新的示範資料；正式上線後每位員工會有自己的帳號密碼。</span></div>
+    <label class="f">帳號<input id="dlUser" value="" placeholder="1111" autocapitalize="off" inputmode="numeric"></label>
+    <label class="f">密碼<input id="dlPw" type="password" placeholder="1111" inputmode="numeric"></label>
+    <div class="login-hint">示範帳號：<b>1111</b>　密碼：<b>1111</b><br><span class="small">此為示範用帳號，登入後會載入最新的示範資料；正式上線後每位員工會有自己的帳號密碼。</span></div>
     <p id="dlMsg" class="small" style="color:var(--bad);min-height:1em"></p>
     <button class="btn pri" style="width:100%" id="dlBtn">登入</button></form></div>`);
   const f = $('#demoLogin form'); setTimeout(() => $('#dlUser').focus(), 50);
   f.addEventListener('submit', async e => {
     e.preventDefault(); const u = $('#dlUser').value.trim().toLowerCase(), pw = $('#dlPw').value.trim(), msg = $('#dlMsg');
-    if (u !== DEMO_ACCOUNT) { msg.textContent = '帳號錯誤（示範帳號是 demo）'; return; }
+    if (u !== DEMO_ACCOUNT) { msg.textContent = '帳號錯誤（示範帳號是 1111）'; return; }
     msg.style.color = 'var(--muted)'; msg.textContent = '登入中，正在載入最新示範資料…'; $('#dlBtn').disabled = true;
     if (!DB.settings.user) DB.settings.user = { name: '示範使用者', role: '機構主任' };
     const ok = await loadTrial(pw, null, true);
-    if (!ok) { msg.style.color = 'var(--bad)'; msg.textContent = '密碼錯誤（示範密碼是 EEEE）'; $('#dlBtn').disabled = false; return; }
+    if (!ok) { msg.style.color = 'var(--bad)'; msg.textContent = '密碼錯誤（示範密碼是 1111）'; $('#dlBtn').disabled = false; return; }
     try { sessionStorage.setItem('demoIn', '1'); } catch (x) {}
     $('#demoLogin').remove(); $('#logoutBtn').hidden = false; updateBrand(); go('dash'); render();
   });
